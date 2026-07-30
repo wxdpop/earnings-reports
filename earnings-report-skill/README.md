@@ -233,12 +233,14 @@ python "<skill_dir>/scripts/collect-user-info.py" --mode standalone --check-only
 ```
 
 **两种调用模式**：
-- `standalone`：子技能独立使用，写入子技能自身 config.local.json
-- `proxy`：被父技能初始化时代理调用，写入父技能 config.local.json
+- `standalone`：子技能独立使用，写入子技能自身 config.local.json（**子技能本身也需要信息收集前置**）
+- `proxy`：被父技能初始化时代理调用，写入父技能 config.local.json（**父技能代理子技能这部分工作，并额外增加调度间隔收集**）
 
-**6 项收集项**：工作根目录 / 调度间隔 / API Key 状态 / 飞书 Webhook / 公司库导入方案 / 部署方案
+**收集项数量**：
+- standalone 模式 6 项（不含调度间隔）：工作根目录 / API Key 状态 / 飞书 Webhook / 公司库导入方案 / 部署方案 / GitHub 仓库名称（条件性）
+- proxy 模式 7 项：上述 6 项 + 调度间隔（父技能额外）
 
-详细规范见 [info-collect-spec.md](references/info-collect-spec.md)
+**信息收集规范全部由 [info-collect-spec.md](references/info-collect-spec.md) 承载，子父技能仅代理引用**
 
 ### config.local.json 配置示例（子技能）
 

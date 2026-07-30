@@ -132,7 +132,7 @@ python "{skill_dir}/scripts/check-and-install.py" --force-check # 强制重检�
 
 ### 阶段 -1.5：用户信息收集
 
-**触发时机**：阶段 -1 环境检查通过后，检测到 config.local.json 含未替换占位符或关键字段为空时触发。也可由父技能初始化时代理调用（proxy 模式）。
+**触发时机**：阶段 -1 环境检查通过后，检测到 config.local.json 含未替换占位符或关键字段为空时触发。子技能本身也需要信息收集前置（standalone 模式独立完成）；父技能初始化时通过 proxy 模式代理此流程，并额外增加调度间隔收集（父技能专有字段）。
 
 **执行脚本**：
 
@@ -485,7 +485,7 @@ Webhook URL 从 config.local.json 的 `feishu.webhook_url`（嵌套结构）加�
 | 功能 | 脚本路径 | 关键参数 | 备注 |
 |------|---------|---------|------|
 | 环境检查+安装 | `scripts/check-and-install.py` | `--china` / `--fix-config` / `--force-check` / `--skip-check` | 内部按平台选择安装命令（winget/brew/apt） |
-| ★ 用户信息收集 | `scripts/collect-user-info.py` | `--mode standalone\|proxy` / `--answers` / `--check-only` | 承载 7 项弹窗收集逻辑 |
+| ★ 用户信息收集 | `scripts/collect-user-info.py` | `--mode standalone\|proxy` / `--answers` / `--check-only` | 承载 standalone 6 项 / proxy 7 项弹窗收集逻辑（规范见 info-collect-spec.md） |
 | API 数据拉取 | `scripts/fetch-data.py` | `--symbol` / `--out-dir` | 完成后自动调用 parse-financial-data.py |
 | 模板填充 | `scripts/fill-template.py` | `--template-file` / `--sections-file` / `--output-file` | 含结构完整性校验 |
 | 单文件构建 | `references/build-standalone.py` | `--source-dir` / `--output-dir` | 使用 Python 字符串 .replace() 精确匹配 |

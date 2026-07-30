@@ -40,8 +40,8 @@ SKILL 自动监控公司库并生成的上市公司财报深度分析报告，�
     ↓
 步骤 1：加载父技能配置
     ↓
-步骤 2：★ 信息收集前置（由子技能 collect-user-info.py 代理收集 6 项）
-    │   工作根目录 + 调度间隔 + API Key + Webhook + 公司库 + 部署方案
+步骤 2：★ 信息收集前置（代理子技能 collect-user-info.py 收集，额外增加调度间隔共 7 项）
+    │   工作根目录 + 调度间隔(父技能额外) + API Key + Webhook + 公司库 + 部署方案 + GitHub 仓库名称(条件性)
     ↓
 步骤 3：Python 前提项检测 + LLM 自动安装
     ↓
@@ -263,9 +263,11 @@ python "{skill_dir}/references/verify-headless.py" "{repo_dir}/reports/TSLA/tsla
 AI 会按 11 步流程自动完成：
 
 1. **加载父技能配置**：基于当前技能安装路径推断 `parent_skill_dir`、`child_skill_dir`
-2. **★ 信息收集前置**（由子技能 `collect-user-info.py --mode proxy` 代理收集 6 项）：
+2. **★ 信息收集前置**（代理子技能 `collect-user-info.py --mode proxy` 收集，额外增加调度间隔共 7 项）：
+   - **代理关系**：子技能本身也需要信息收集前置（standalone 模式 6 项，不含调度间隔）；父技能 proxy 模式代理子技能这部分工作，并额外增加调度间隔收集
    - 调用子技能脚本输出弹窗规范 JSON → LLM 执行 AskUserQuestion → 回传答案 → 脚本写入父技能 config.local.json
-   - 收集项：工作根目录 / 调度间隔 / API Key 状态 / 飞书 Webhook / 公司库导入方案 / 部署方案
+   - 收集项：工作根目录 / 调度间隔(父技能额外) / API Key 状态 / 飞书 Webhook / 公司库导入方案 / 部署方案 / GitHub 仓库名称(条件性)
+   - **信息收集规范全部由子技能 [info-collect-spec.md](./earnings-report-skill/references/info-collect-spec.md) 承载，父技能仅代理引用**
 3. **Python 前提项检测 + LLM 自动安装**：检测到 Python 不存在时直接调用 winget/brew/apt 安装
 4. **调用子技能环境检测脚本**：执行 `check-and-install.py`，9 项依赖并行检查 + 自动安装
 5. **校验子技能缓存**：确认 `.env-check-result.{platform}.json` 生成且 `all_pass=true`

@@ -11,7 +11,7 @@ description: "财报编排调度技能。1句话触发初始化：先收集调�
 
 父技能（orchestrator），作为**编排层**，不重写报告生成逻辑：
 
-1. **★ 信息收集前置**（由子技能代理）：1 句话触发初始化后，调用子技能 `collect-user-info.py --mode proxy` 代理收集「工作根目录 + 调度间隔 + API Key + Webhook + 公司库 + 部署方案」6 项用户交互，收集完毕再执行环境检测
+1. **★ 信息收集前置**（代理子技能）：1 句话触发初始化后，调用子技能 `collect-user-info.py --mode proxy` **代理子技能的信息收集前置工作**，并**额外增加调度间隔收集**（父技能专有字段），共 7 项用户交互：工作根目录 + 调度间隔 + API Key + Webhook + 公司库 + 部署方案 + GitHub 仓库名称（条件性）。收集完毕再执行环境检测。**信息收集规范全部由子技能 [info-collect-spec.md](../earnings-report-skill/references/info-collect-spec.md) 承载，父技能仅代理引用**
 2. **★ Python 前提项 + LLM 自动安装**：Python 3.8+ 是所有脚本运行前提。LLM 检测到 Python 不存在时**直接调用系统包管理器安装**（winget/brew/apt），无需用户确认
 3. **★ 父技能代理子技能环境检测**：调用子技能 `check-and-install.py`，子技能目录生成 `.env-check-result.{platform}.json` 缓存（永久有效）
 4. **★ 自动创建定时任务**：通过 TRAE `Schedule` 工具创建（默认每 12 小时），符合触发条件才调用子技能
@@ -81,13 +81,14 @@ description: "财报编排调度技能。1句话触发初始化：先收集调�
 ```
 步骤 1：加载/创建父技能 config.local.json
     ↓
-步骤 2：★ 信息收集前置（6 项用户交互一次性收集）
-    │   2.0 收集工作根目录（输出目录定位，与技能安装目录无关）
-    │   2.1 收集调度间隔（默认每12小时）
-    │   2.2 收集 API Key 状态（已有/需注册）
-    │   2.3 收集飞书 Webhook 状态（已有/需配置/跳过）
-    │   2.4 收集公司库导入方案（默认美股7巨头）
-    │   2.5 收集部署方案（默认仅 Cloudflare；可选追加 GitHub）
+步骤 2：★ 信息收集前置（代理子技能 6 项 + 额外调度间隔 = 7 项用户交互一次性收集）
+    │   2.0 收集工作根目录（输出目录定位，与技能安装目录无关）—— 子技能项
+    │   2.1 收集调度间隔（默认每12小时）—— ★ 父技能额外项（写入父技能 config 的 schedule 字段）
+    │   2.2 收集 API Key 状态（已有/需注册）—— 子技能项
+    │   2.3 收集飞书 Webhook 状态（已有/需配置/跳过）—— 子技能项
+    │   2.4 收集公司库导入方案（默认美股7巨头）—— 子技能项
+    │   2.5 收集部署方案（默认仅 Cloudflare；可选追加 GitHub）—— 子技能项
+    │   2.6 收集 GitHub 仓库名称（条件性，仅当 2.5 选 cloudflare_github）—— 子技能项
     ↓
 步骤 3：★ Python 前提项检测 + LLM 自动安装
     │   3.1 检测 python --version
@@ -137,9 +138,9 @@ description: "财报编排调度技能。1句话触发初始化：先收集调�
   - ★ 输出目录与配置文件目录是不同概念：配置文件在技能安装目录，输出目录在用户工作空间
 - 校验 `child_skill_dir` 目录存在；不存在则弹窗提示用户手动指定
 
-#### 步骤 2：★ 信息收集前置（由子技能 collect-user-info.py 代理收集 6 项）
+#### 步骤 2：★ 信息收集前置（代理子技能 collect-user-info.py 收集，额外增加调度间隔共 7 项）
 
-**调用子技能代理收集**：
+**调用子技能代理收集**（子技能本身也需要信息收集前置；父技能 proxy 模式代理子技能的这部分工作，并额外增加调度间隔收集）：
 
 ```bash
 # 阶段 A：输出弹窗规范 JSON
@@ -151,7 +152,9 @@ python "{child_skill_dir}/scripts/collect-user-info.py" --mode proxy --parent-co
 
 **核心说明**：
 - 采用两阶段调用协议（阶段 A 输出弹窗规范 → LLM 执行 AskUserQuestion → 阶段 B 写入 config）
-- 收集 6 项：工作根目录、调度间隔、API Key、飞书 Webhook、公司库导入方案、部署方案
+- **代理关系**：子技能本身也需要信息收集前置（standalone 模式 6 项，不含调度间隔）；父技能 proxy 模式代理子技能的这部分工作，并**额外增加调度间隔收集**（父技能专有字段），共 7 项
+- 收集 7 项：工作根目录、调度间隔（父技能额外）、API Key、飞书 Webhook、公司库导入方案、部署方案、GitHub 仓库名称（条件性，仅当部署方案选 cloudflare_github）
+- **信息收集规范全部由子技能 [info-collect-spec.md](../earnings-report-skill/references/info-collect-spec.md) 承载，父技能仅代理引用**
 - 阶段 B 输出 JSON 供后续步骤消费（`placeholders_remaining` → 步骤 6；`company_library_*` → 步骤 8；`schedule_*` → 步骤 10；`cloudflare_configured` / `github_login_*` → 步骤 6.5/9）
 - `github_repo_name` / `github_repo_full` / `github_repo_status` / `github_repo_action` → 步骤 6.5.3（GitHub 仓库 clone/init/pull）
 - **详细规范（弹窗选项、字段映射、占位符检测、输出 JSON 消费映射）见子技能 [info-collect-spec.md](../earnings-report-skill/references/info-collect-spec.md)**
