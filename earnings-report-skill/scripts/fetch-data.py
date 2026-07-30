@@ -14,7 +14,7 @@
   5. Alpha Vantage 现金流量表
 
 API Key 加载：config.local.json（统一入口）
-输出目录解析优先级：--out-dir 参数 → config.paths.output_dir → 平台默认值
+输出目录解析优先级：--out-dir 参数 → 代码推导(output_root/Output/项目名/data) → 抛错
 
 用法：
   python fetch-data.py --symbol JNJ
