@@ -461,8 +461,7 @@ message: |
      - 获取 next_earnings_date == today 的公司列表
      - 返回 current_time（真实系统北京时间）、companies[].released、all_released、dispatch_advice
      - ★ 列表为空（当天无财报更新）→ ★ 静默终止，不输出任何内容，等待下一次调度
-     - ★ 列表非空但 all_released=false（存在未到发布时间的公司）→ ★ 静默终止，等待下一次调度
-     - 列表非空且 all_released=true → 继续（仅对 released=true 的公司执行就绪检查）
+     - ★ 列表非空 → 进入就绪检查阶段（对 released=true 的公司执行就绪检查，对 released=false 的公司静默跳过，不阻塞已发布公司的处理）
   
   4. 对每个命中公司，并行执行 readiness-check.py（★ Trae 用 Task 子代理并行）
      - 就绪检查三项：财报已发布 + 电话会议已结束 + 媒体已更新
@@ -681,15 +680,13 @@ python "{parent_skill_dir}\scripts\library-manager.py" --action today
    │   → ★ 静默终止，不输出任何内容，等待下一次调度
    │   → 不弹窗、不打印"今日无公司发布财报"
    │
-   ├─ ★ 列表非空但 all_released=false（存在未到发布时间的公司）
-   │   → ★ 静默终止，不输出任何内容，等待下一次调度
-   │   → LLM 不得依赖 topics.md 或用户输入的调度说明中的时间，必须以 current_time 为准
-   │   → 示例：current_time=2026-07-29T09:47:00+08:00，next_earnings_time=20:00
-   │            → hours_until_release=10.2 → released=false → 静默等待
-   │
-   └─ 列表非空且 all_released=true（所有命中公司都已过发布时间）
+   └─ ★ 列表非空 → 进入就绪检查阶段
        ↓
 4. 对每个命中公司（仅 released=true 的公司），并行执行 readiness-check.py（★ Trae 用 Task 子代理并行）
+   - released=false 的公司静默跳过，不阻塞已发布公司的处理
+   - LLM 不得依赖 topics.md 或用户输入的调度说明中的时间，必须以 current_time 为准
+   - 示例：current_time=2026-07-29T09:47:00+08:00，next_earnings_time=20:00
+            → hours_until_release=10.2 → released=false → 该公司静默跳过，其他 released=true 的公司继续处理
    就绪检查三项：
    ① 财报是否已发布（公司 IR 页面有最新季度财报链接）
    ② 电话会议是否已结束（IR 页面有 replay/audio 链接，或媒体报道"电话会议结束"）
@@ -722,11 +719,11 @@ python "{parent_skill_dir}\scripts\library-manager.py" --action today
 | 初始化标记不存在/未通过                         | 弹窗提示初始化                                |
 | 公司库为空                                | **完全静默**，不输出任何内容                       |
 | 当天无财报更新（library-manager today 返回空）   | **完全静默**，不输出任何内容                       |
-| ★ 当天有财报但未到发布时间（released=false，方案A新增） | **完全静默**，不输出任何内容，等待下一次调度               |
+| ★ 当天有财报但部分公司未到发布时间（released=false）     | 对 released=false 的公司**静默跳过**，对 released=true 的公司继续执行就绪检查 |
 | 当天有财报且已过发布时间，但就绪检查未通过                | 仅输出"XX公司当日有财报更新计划，正式财报还没有发布，等待下一次调度执行" |
 | 当天有财报且已过发布时间，就绪检查全 PASS              | 调用子技能生成报告，完成后输出生成摘要                    |
 
-**★ 方案A 时间判断原则**：LLM 必须以 `library-manager.py --action today` 返回的 `current_time`（真实系统北京时间）为准，**不得依赖 topics.md 记忆或用户输入的调度说明中的时间**。若 `all_released=false`，静默终止，不执行就绪检查。
+**★ 方案A 时间判断原则**：LLM 必须以 `library-manager.py --action today` 返回的 `current_time`（真实系统北京时间）为准，**不得依赖 topics.md 记忆或用户输入的调度说明中的时间**。对 `released=false` 的公司静默跳过，对 `released=true` 的公司继续执行就绪检查（all_released=false 不再阻塞已发布公司的处理）。
 
 **设计原则**：定时任务在后台静默运行，避免频繁打扰用户。仅在需要用户关注时才输出（财报未发布提示、报告生成完成摘要、异常错误）。
 
@@ -788,7 +785,13 @@ python "{parent_skill_dir}\scripts\dispatch-child-skill.py" --ticker "NVDA" --qu
 1. 从 `config.local.json` 读取 `child_skill_dir`、`output_root`，并按 `output_root/Output/项目名` 推导仓库目录
 2. 校验子技能目录存在、`.parent-init-done.json` 标记存在
 3. 调用 `resolve_python_executable()` 解析 Python 绝对路径（7 级优先级），输出 JSON 的 `script_invocation` 字段为绝对路径
-4. 输出子技能脚本调用序列（JSON），LLM 按此序列执行子技能 9 阶段工作流（`command` 字段已用绝对路径，LLM 直接执行即可）
+4. 输出子技能脚本调用序列（JSON），LLM 按此序列执行子技能 10 阶段工作流（`command` 字段已用绝对路径，LLM 直接执行即可）
+
+**★ 强制执行 stage 10（update-status）**：execution_sequence 数组末尾的 stage 10 是"更新公司库状态"步骤，必须执行。若不执行：
+- `last_report_status.status` 仍为 waiting，下次调度会重复触发已处理过的公司
+- `next_earnings_date` 不会更新为下一次财报日期，导致 today 命令一直命中旧日期
+
+LLM 在完成阶段 9（飞书推送）后，必须继续执行 stage 10。仅当阶段 1-9 中有任一失败时，跳过 stage 10，改为执行 rollback_on_failure 中的 update_status_command（status=failed）。
 
 **统一 Python 调用**（子技能已统一 Python 单文件，无平台分支）：
 

@@ -396,11 +396,20 @@ def build_dispatch_plan(args) -> dict:
                         }
                     }
                 ]
+            },
+            {
+                "stage": 10,
+                "name": "更新公司库状态（★ 强制执行，不可跳过）",
+                "command": f'"{py_bin}" "{SCRIPT_DIR / "library-manager.py"}" --action update-status --ticker {ticker} --status completed --quarter "{quarter}" --path "{report_path}"',
+                "critical": True,
+                "note": "★ 必须执行此命令更新公司库状态为 completed。若不执行，next_earnings_date 不会更新为下一次财报，last_report_status.status 仍为 waiting，导致下次调度重复触发已处理过的公司。",
+                "skip_condition": "仅当阶段 1-9 中有任一失败时跳过此步骤，改为执行 rollback_on_failure 中的 update_status_command（status=failed）"
             }
         ],
         "post_execution": {
             "update_status_command": f'"{py_bin}" "{SCRIPT_DIR / "library-manager.py"}" --action update-status --ticker {ticker} --status completed --quarter "{quarter}" --path "{report_path}"',
-            "note": "报告生成完成后，调用此命令更新公司库状态为 completed"
+            "note": "★ 已提升为 execution_sequence 的 stage 10，LLM 必须按序执行。此字段保留作为冗余提醒（向后兼容）。",
+            "critical": True
         },
         "rollback_on_failure": {
             "update_status_command": f'"{py_bin}" "{SCRIPT_DIR / "library-manager.py"}" --action update-status --ticker {ticker} --status failed --quarter "{quarter}"',
