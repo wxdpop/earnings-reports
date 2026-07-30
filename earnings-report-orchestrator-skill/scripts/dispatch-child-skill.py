@@ -241,15 +241,20 @@ def build_dispatch_plan(args) -> dict:
         print(json.dumps({"status": "error", "reason": f"子技能目录不存在: {child_skill_dir}"}, ensure_ascii=False))
         sys.exit(1)
 
-    output_dir = Path(cfg.get("paths", {}).get("output_dir", ""))
-    repo_dir = Path(cfg.get("paths", {}).get("repo_dir", ""))
-    # 输出/仓库目录留空时报错（不从技能安装路径推断）
-    if not str(output_dir):
-        print(json.dumps({"status": "error", "reason": "paths.output_dir 未配置，请重新执行初始化（输出目录在用户工作空间，不在技能安装目录）"}, ensure_ascii=False))
+    # 推导仓库根目录：output_root/Output/项目名（不再从 paths.output_dir/repo_dir 读取）
+    output_root = cfg.get("paths", {}).get("output_root", "")
+    github_repo = cfg.get("deployment", {}).get("github", {}).get("repo", "")
+    project_name = github_repo.split('/')[-1] if github_repo else ""
+    if not output_root:
+        print(json.dumps({"status": "error", "reason": "paths.output_root 未配置，请重新执行初始化（输出根目录在用户工作空间，盘符+文件夹）"}, ensure_ascii=False))
         sys.exit(1)
-    if not str(repo_dir):
-        print(json.dumps({"status": "error", "reason": "paths.repo_dir 未配置，请重新执行初始化（仓库目录在用户工作空间，不在技能安装目录）"}, ensure_ascii=False))
+    if not project_name:
+        print(json.dumps({"status": "error", "reason": "deployment.github.repo 未配置，无法推导仓库目录"}, ensure_ascii=False))
         sys.exit(1)
+    repo_root = Path(output_root) / "Output" / project_name
+    # output_dir/repo_dir 统一指向 repo_root（向后兼容变量名）
+    output_dir = repo_root
+    repo_dir = repo_root
 
     ticker = args.ticker.upper()
     quarter = args.quarter

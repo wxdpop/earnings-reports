@@ -33,18 +33,21 @@
 
 ## 二、弹窗规范（standalone 6 项 / proxy 7 项）
 
-### 弹窗 0：工作根目录（输出目录定位）
+### 弹窗 0：输出根目录（盘符+文件夹）
 
 | 选项 | 值 | 说明 |
 |---|---|---|
-| **使用当前工作目录（推荐）** | `__cwd__` | 自动获取当前工作目录作为工作根目录 |
-| 手动输入工作根目录 | `__user_input__` | 用户打字输入绝对路径，如 `d:\TraeAutomaticTools` 或 `~/projects` |
+| 手动输入输出根目录 | `__user_input__` | 用户打字输入绝对路径，如 `d:\TraeAutomaticTools` 或 `~/projects` |
 
 **字段映射**：
-- `paths.output_dir` = `<工作根目录>/Output/stock-financial-reports`
-- `paths.repo_dir` = 同 `paths.output_dir`
+- `paths.output_root` ← 用户输入值
 
-**约束**：与技能安装目录无关，必须由用户显式选择。
+**value_transform**：
+- 用户输入值直接写入 `paths.output_root`，不再拼接 `Output/stock-financial-reports`
+
+**约束**：
+- 与技能安装目录无关，必须由用户显式输入
+- 路径必须为绝对路径（如 `d:\TraeAutomaticTools`，不接受相对路径）
 
 ---
 
@@ -70,20 +73,29 @@
 
 | 选项 | 值 | 说明 |
 |---|---|---|
-| 已有 Finnhub + Alpha Vantage API Key | `have_both` | 用户已有，引导编辑 config.local.json 填入 |
 | 需注册 Finnhub API Key | `need_finnhub` | 输出注册地址 https://finnhub.io/register |
 | 需注册 Alpha Vantage API Key | `need_alphavantage` | 输出注册地址 https://www.alphavantage.support/free-api-key |
 | 需注册两个 API Key | `need_both` | 输出两个注册地址 |
+| 已有 Finnhub + Alpha Vantage API Key | `have_both` | 用户已有，通过输入框一次性提供 |
+
+**have_both 选项输入框**：
+- 格式：`Finnhub_key,Alpha_Vantage_key`（逗号分隔，顺序固定，不可交换）
+- 示例：`abc123finnhub,xyz789alpha`
 
 **字段映射**：
-- `finnhub.api_key` ← 用户后续手动编辑填入真实值
-- `alphavantage.api_key` ← 用户后续手动编辑填入真实值
+- 选择 `need_finnhub` / `need_alphavantage` / `need_both` 时：
+  - `finnhub.api_key` ← 用户后续手动编辑填入真实值
+  - `alphavantage.api_key` ← 用户后续手动编辑填入真实值
+- 选择 `have_both` 时：
+  - 脚本直接解析输入框，按逗号分隔，第一段写入 `finnhub.api_key`，第二段写入 `alphavantage.api_key`
 
 **占位符检测**：
 - `<your-finnhub-api-key>`
 - `<your-alphavantage-api-key>`
 
-**约束**：脚本不在此阶段填入真实 API Key（用户需手动编辑），仅确保占位符存在。
+**约束**：
+- 选择 `need_*` 选项时，脚本不在此阶段填入真实 API Key（用户需手动编辑），仅确保占位符存在
+- 选择 `have_both` 时，脚本直接解析输入框并写入 config.local.json，对应字段不再视为占位符
 
 ---
 
@@ -131,8 +143,8 @@
 - `deployment.github.enabled` ← 用户选择
 - `deployment.cloudflare.api_token` ← 用户后续手动编辑填入
 - `deployment.cloudflare.account_id` ← 用户后续手动编辑填入
-- wrangler `--project-name`：不在配置文件中定义，运行时从 `deployment.github.repo` 提取仓库名（取 `/` 后的部分）
-- `deployment.github.repo` = 空（用户后续填入）
+- `deployment.github.repo` ← 由弹窗 6 收集写入（弹窗 6 始终展示，无论本弹窗选择哪种部署方案）
+- wrangler `--project-name`：不在配置文件中定义，运行时从 `deployment.github.repo` 提取项目名（取 `/` 后的部分）
 
 **占位符检测**：
 - `<your-cloudflare-api-token>`
@@ -142,17 +154,21 @@
 
 ---
 
-### 弹窗 6：GitHub 仓库名称（dialog_6_github_repo）
+### 弹窗 6：项目名称（dialog_6_project_name）
 
-- **conditional_on**：`dialog_5_deployment.choice == 'cloudflare_github'`（仅当弹窗 5 选择双节点时展示）
+- **conditional_on**：无（始终展示，不再仅限双部署场景）
+- **描述**：用于 GitHub 仓库名 + Cloudflare Pages 项目名（wrangler `--project-name`）
 - **字段映射**：`deployment.github.repo`
 - **选项**：
   - `stock-financial-reports`（默认推荐）
-  - `__user_input__`（用户手动输入仓库名，仅仓库名不含用户名前缀）
+  - `__user_input__`（用户手动输入项目名，仅项目名不含用户名前缀）
+- **校验规则**：
+  - 正则：`^[a-z0-9][a-z0-9-]*$`（全英文小写 + 数字 + 连字符，首字符必须为小写字母或数字）
 - **处理逻辑**：
-  - 收集脚本通过 `gh api user --jq .login` 获取用户名，补全为 `用户名/仓库名`
-  - gh 未登录时仅写入仓库名，步骤 6.5.2 完成 gh auth login 后由父技能补全
-- **wrangler `--project-name` 推导**：不在配置文件中定义，运行时从 `deployment.github.repo` 提取仓库名（取 `/` 后的部分）
+  - 收集脚本通过 `gh api user --jq .login` 获取用户名，补全为 `用户名/项目名`
+  - gh 未登录时仅写入项目名，步骤 6.5.2 完成 gh auth login 后由父技能补全
+  - 仓库目录运行时推导：`paths.output_root/Output/项目名`（不存入 config）
+- **wrangler `--project-name` 推导**：不在配置文件中定义，运行时从 `deployment.github.repo` 提取项目名（取 `/` 后的部分）
 
 ---
 
@@ -165,6 +181,9 @@
 | `<your-alphavantage-api-key>` | `alphavantage.api_key` | WARN，不阻断 |
 | `<your-cloudflare-api-token>` | `deployment.cloudflare.api_token` | WARN，不阻断 |
 | `<your-cloudflare-account-id>` | `deployment.cloudflare.account_id` | WARN，不阻断 |
+
+**特殊豁免**：
+- 当用户在弹窗 2 选择 `have_both` 并填入输入框后，`finnhub.api_key` 和 `alphavantage.api_key` 已被脚本直接写入真实值，不再视为占位符（不触发 WARN）
 
 **检测时机**：
 - 阶段 B 写入 config 后立即检测
@@ -195,8 +214,7 @@
   "finnhub": { "api_key": "<your-finnhub-api-key>" },
   "alphavantage": { "api_key": "<your-alphavantage-api-key>" },
   "paths": {
-    "output_dir": "<工作根目录>/Output/stock-financial-reports",
-    "repo_dir": "<工作根目录>/Output/stock-financial-reports"
+    "output_root": "<用户输入的输出根目录，盘符+文件夹>"
   },
   "deployment": {
     "targets": ["cloudflare"],
@@ -219,8 +237,7 @@
   "finnhub": { "api_key": "<your-finnhub-api-key>" },
   "alphavantage": { "api_key": "<your-alphavantage-api-key>" },
   "paths": {
-    "output_dir": "<工作根目录>/Output/stock-financial-reports",
-    "repo_dir": "<工作根目录>/Output/stock-financial-reports"
+    "output_root": "<用户输入的输出根目录，盘符+文件夹>"
   },
   "deployment": {
     "targets": ["cloudflare"],
@@ -244,9 +261,10 @@
 | 字段 | standalone 写入 | proxy 写入 | 说明 |
 |---|---|---|---|
 | `feishu.*` / `finnhub.*` / `alphavantage.*` | ✓ | ✓ | 两边都保留 |
-| `paths.*` | ✓ | ✓ | 两边都保留 |
+| `paths.output_root` | ✓ | ✓ | 两边都保留（用户输入的输出根目录） |
+| `paths.output_dir` / `paths.repo_dir` | ✗ | ✗ | 已删除，不再写入（仓库目录由代码运行时推导：`output_root/Output/项目名`） |
 | `deployment.*` | ✓ | ✓ | 两边都保留 |
-| `deployment.github.repo` | ✓ | ✓ | 由收集脚本写入（gh 登录时为 `用户名/仓库名`，未登录时仅仓库名） |
+| `deployment.github.repo` | ✓ | ✓ | 始终写入（无论哪种部署方案，因为仓库目录推导依赖项目名；gh 登录时为 `用户名/项目名`，未登录时仅项目名） |
 | `schedule.*` | ✗ | ✓ | 仅父技能（子技能不需要调度） |
 | `child_skill_dir` / `parent_skill_dir` | ✗ | ✗ | 由父技能步骤 1 推断，不由收集脚本写入 |
 | `python_executable` | ✗ | ✗ | 由父技能步骤 3 探测，不由收集脚本写入 |
@@ -269,10 +287,13 @@
 | `github_login_required` | 步骤 6.5 | 决定是否执行 GitHub 登录引导 |
 | `github_login_status` | 步骤 6.5/9 | 决定是否执行 `gh auth login`，写入 `github_logged_in` 标记 |
 | `next_actions` | 步骤 6/6.5 | 引导用户后续操作的动作清单 |
-| `github_repo_name` | 步骤 6.5.3 | 仓库名，如 stock-financial-reports |
+| `github_repo_name` | 步骤 6.5.3 | 项目名（即 GitHub 仓库名），如 stock-financial-reports |
 | `github_repo_full` | 步骤 6.5.3 | 完整地址，如 wxdpop/stock-financial-reports |
 | `github_repo_status` | 步骤 6.5.3 | exists/not_exists/not_logged_in/skip |
 | `github_repo_action` | 步骤 6.5.3 | clone/pull/init/pending/skip |
+
+**仓库目录推导**：
+- `github_repo_action` 判定时，仓库目录不再从 `paths.repo_dir` 读取（该字段已删除），改为运行时推导：`paths.output_root/Output/项目名`（项目名取自 `deployment.github.repo` 的 `/` 后部分）
 
 ---
 

@@ -15,10 +15,9 @@
     "api_key": "<your-alphavantage-api-key>"
   },
   "paths": {
-    "_comment": "输出目录配置（用户工作空间，与技能安装目录无关）- 留空时由父技能初始化填写为 <工作根目录>/Output/stock-financial-reports",
-    "_rule": "输出目录不从技能安装路径推断；留空时脚本抛错提示用户配置",
-    "output_dir": "",
-    "repo_dir": ""
+    "_comment": "输出根目录（用户工作空间，盘符+文件夹）- 由父技能初始化弹窗0询问用户输入；代码运行时拼接为 仓库目录 = output_root/Output/项目名",
+    "_rule": "output_root 不从技能安装路径推断；仓库目录由代码读取 output_root + deployment.github.repo 推导，不存入 config",
+    "output_root": ""
   },
   "deployment": {
     "_comment": "部署配置 - Cloudflare 始终必选（不可关闭）；GitHub 可选（默认不启用，含 github 时需登录）。wrangler 运行时从 github.repo 仓库名推导 --project-name，不在模板中配置",

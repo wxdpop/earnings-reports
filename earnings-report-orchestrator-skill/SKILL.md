@@ -11,14 +11,14 @@ description: "财报编排调度技能。1句话触发初始化：先收集调�
 
 父技能（orchestrator），作为**编排层**，不重写报告生成逻辑：
 
-1. **★ 信息收集前置**（代理子技能）：1 句话触发初始化后，调用子技能 `collect-user-info.py --mode proxy` **代理子技能的信息收集前置工作**，并**额外增加调度间隔收集**（父技能专有字段），共 7 项用户交互：工作根目录 + 调度间隔 + API Key + Webhook + 公司库 + 部署方案 + GitHub 仓库名称（条件性）。收集完毕再执行环境检测。**信息收集规范全部由子技能 [info-collect-spec.md](../earnings-report-skill/references/info-collect-spec.md) 承载，父技能仅代理引用**
+1. **★ 信息收集前置**（代理子技能）：1 句话触发初始化后，调用子技能 `collect-user-info.py --mode proxy` **代理子技能的信息收集前置工作**，并**额外增加调度间隔收集**（父技能专有字段），共 7 项用户交互：输出根目录 + 调度间隔 + API Key + Webhook + 公司库 + 部署方案 + 项目名称。收集完毕再执行环境检测。**信息收集规范全部由子技能 [info-collect-spec.md](../earnings-report-skill/references/info-collect-spec.md) 承载，父技能仅代理引用**
 2. **★ Python 前提项 + LLM 自动安装**：Python 3.8+ 是所有脚本运行前提。LLM 检测到 Python 不存在时**直接调用系统包管理器安装**（winget/brew/apt），无需用户确认
 3. **★ 父技能代理子技能环境检测**：调用子技能 `check-and-install.py`，子技能目录生成 `.env-check-result.{platform}.json` 缓存（永久有效）
 4. **★ 自动创建定时任务**：通过 TRAE `Schedule` 工具创建（默认每 12 小时），符合触发条件才调用子技能
 5. **★ 就绪检查三验证**：财报发布 + 电话会议结束 + 媒体更新全 PASS → 调用子技能 `earnings-report` 生成报告
 6. **★ 静默调度规则**：定时任务触发后，直接读取初始化标记和公司库。当天无财报→**静默不输出**；有财报未发布→**仅输出提示**，等待下一次调度
 7. **★ 路径动态化 + 部署可选**：所有路径基于技能实际安装目录推断，不硬编码开发仓库路径；Cloudflare 部署必选（默认）+ GitHub 部署可选
-8. **★ 路径分类规则**：区分"配置文件目录"（技能安装目录）和"输出/仓库目录"（用户工作空间）；输出目录初始化时由 LLM 询问工作根目录后填写为 `<工作根目录>/Output/stock-financial-reports`，不从技能安装路径推断
+8. **★ 路径分类规则**：区分"配置文件目录"（技能安装目录）和"输出根目录"（用户工作空间）；输出根目录由用户输入（盘符+文件夹），仓库目录 = output_root/Output/项目名（代码运行时推导，不存入 config），不从技能安装路径推断
 9. **★ Python 探测优先级 + stub 跳过**：agent 内置 Python 优先于系统 PATH，跳过 Windows Store 0 字节 stub；探测到的绝对路径写入 `config.local.json` 的 `python_executable` 字段，子技能缓存 `.env-check-result.{platform}.json` 也写入 `py_executable`，所有后续脚本调用使用绝对路径不依赖 PATH
 
 **与子技能的关系**：父技能**不改动子技能文件**，只读取/调用子技能脚本。子技能已统一 Python 单文件，父技能统一用 `python_executable` 绝对路径调用，无平台分支。
@@ -28,7 +28,7 @@ description: "财报编排调度技能。1句话触发初始化：先收集调�
 路径分类规则（核心改造）：
 
 - **配置文件目录**（config.local.json / company-library.json / .parent-init-done.json / .env-check-result.\*.json）：基于"当前技能实际安装目录"推断（`Path(__file__).resolve().parent.parent`）
-- **输出/仓库目录**（paths.output\_dir / paths.repo\_dir）：在**用户工作空间**，与技能安装目录无关，必须由用户在初始化时显式填写
+- **输出根目录**（paths.output\_root）：在**用户工作空间**，与技能安装目录无关，必须由用户在初始化时显式填写（盘符+文件夹）；仓库目录 = output_root/Output/项目名（代码运行时推导，不存入 config）
 
 | 项                | 值                                                                                                                   | 目录类型     |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------- | -------- |
@@ -37,15 +37,15 @@ description: "财报编排调度技能。1句话触发初始化：先收集调�
 | 公司库文件            | `{parent_skill_dir}/company-library.json`                                                                           | 配置文件目录   |
 | 父技能初始化标记         | `{parent_skill_dir}/.parent-init-done.json`（运行时生成，.gitignore 排除）                                                    | 配置文件目录   |
 | 子技能环境检测缓存        | `{child_skill_dir}/.env-check-result.{platform}.json`（运行时生成，.gitignore 排除，永久有效）                                     | 配置文件目录   |
-| **报告输出目录**       | `<工作根目录>/Output/stock-financial-reports/reports`（★ 用户工作空间，初始化时由 LLM 询问用户并填写到 config.local.json 的 paths.output\_dir） | **输出目录** |
-| **git 仓库目录**     | 同报告输出目录（`<工作根目录>/Output/stock-financial-reports`，需为 git 仓库根目录）                                                             | **输出目录** |
+| **报告输出目录**       | 仓库目录 = `paths.output_root/Output/项目名`（代码推导）；报告路径 = `仓库目录/reports/{TICKER}/{filename}.html`（★ 用户工作空间，初始化时由 LLM 询问用户输出根目录并填写到 config.local.json 的 paths.output\_root） | **输出目录** |
+| **git 仓库目录**     | 同仓库目录（= `paths.output_root/Output/项目名`，双部署时为 git 仓库根目录）                                                             | **输出目录** |
 | TRAE Schedule 工具 | 平台原生（cron 5 字段，最小 10 分钟粒度）                                                                                          | —        |
 
 **路径推断规则**（区分两类目录）：
 
 - **配置文件目录**：父技能脚本通过 `Path(__file__).resolve().parent.parent` 获取父技能安装目录；子技能目录默认推断为 `<父技能安装目录>/../earnings-report`（兄弟目录关系）
-- **输出/仓库目录**：**不从技能安装路径推断**，初始化时 LLM 询问用户工作根目录，填写为 `<工作根目录>/Output/stock-financial-reports`；留空时脚本抛错提示用户配置
-- 用户可在 config.local.json 中显式指定 `child_skill_dir`（配置目录）/ `paths.output_dir` / `paths.repo_dir`（输出目录）
+- **输出根目录**（paths.output\_root）：用户输入的输出根目录（盘符+文件夹）；仓库目录 = output_root/Output/项目名（代码运行时推导，不存入 config）；留空时脚本抛错提示用户配置
+- 用户可在 config.local.json 中显式指定 `child_skill_dir`（配置目录）/ `paths.output_root`（输出根目录）
 
 ## 触发条件
 
@@ -82,13 +82,13 @@ description: "财报编排调度技能。1句话触发初始化：先收集调�
 步骤 1：加载/创建父技能 config.local.json
     ↓
 步骤 2：★ 信息收集前置（代理子技能 6 项 + 额外调度间隔 = 7 项用户交互一次性收集）
-    │   2.0 收集工作根目录（输出目录定位，与技能安装目录无关）—— 子技能项
+    │   2.0 收集输出根目录（盘符+文件夹，用户交互输入）—— 子技能项
     │   2.1 收集调度间隔（默认每12小时）—— ★ 父技能额外项（写入父技能 config 的 schedule 字段）
     │   2.2 收集 API Key 状态（已有/需注册）—— 子技能项
     │   2.3 收集飞书 Webhook 状态（已有/需配置/跳过）—— 子技能项
     │   2.4 收集公司库导入方案（默认美股7巨头）—— 子技能项
     │   2.5 收集部署方案（默认仅 Cloudflare；可选追加 GitHub）—— 子技能项
-    │   2.6 收集 GitHub 仓库名称（条件性，仅当 2.5 选 cloudflare_github）—— 子技能项
+    │   2.6 收集项目名称（始终收集，用于 GitHub 仓库名 + wrangler --project-name）—— 子技能项
     ↓
 步骤 3：★ Python 前提项检测 + LLM 自动安装
     │   3.1 检测 python --version
@@ -132,10 +132,10 @@ description: "财报编排调度技能。1句话触发初始化：先收集调�
 - **配置文件目录自动填充**（config.local.json 中配置字段为空时）：
   - `parent_skill_dir` = 当前 SKILL.md 所在目录（绝对路径）
   - `child_skill_dir` = `<parent_skill_dir>/../earnings-report`（兄弟目录，自动推断）
-- **输出目录需用户填写**（不从技能安装路径推断）：
-  - `paths.output_dir` = `<工作根目录>/Output/stock-financial-reports`（LLM 询问用户工作根目录后填写）
-  - `paths.repo_dir` = 同 `paths.output_dir`（git 仓库根目录）
-  - ★ 输出目录与配置文件目录是不同概念：配置文件在技能安装目录，输出目录在用户工作空间
+- **输出根目录需用户填写**（不从技能安装路径推断）：
+  - `paths.output_root` = 用户输入的输出根目录（盘符+文件夹）
+  - 仓库目录 = `paths.output_root/Output/项目名`（代码运行时推导，不存入 config）
+  - ★ 输出根目录与配置文件目录是不同概念：配置文件在技能安装目录，输出根目录在用户工作空间（盘符+文件夹）
 - 校验 `child_skill_dir` 目录存在；不存在则弹窗提示用户手动指定
 
 #### 步骤 2：★ 信息收集前置（代理子技能 collect-user-info.py 收集，额外增加调度间隔共 7 项）
@@ -153,7 +153,7 @@ python "{child_skill_dir}/scripts/collect-user-info.py" --mode proxy --parent-co
 **核心说明**：
 - 采用两阶段调用协议（阶段 A 输出弹窗规范 → LLM 执行 AskUserQuestion → 阶段 B 写入 config）
 - **代理关系**：子技能本身也需要信息收集前置（standalone 模式 6 项，不含调度间隔）；父技能 proxy 模式代理子技能的这部分工作，并**额外增加调度间隔收集**（父技能专有字段），共 7 项
-- 收集 7 项：工作根目录、调度间隔（父技能额外）、API Key、飞书 Webhook、公司库导入方案、部署方案、GitHub 仓库名称（条件性，仅当部署方案选 cloudflare_github）
+- 收集 7 项：输出根目录、调度间隔（父技能额外）、API Key、飞书 Webhook、公司库导入方案、部署方案、项目名称（始终收集，用于 GitHub 仓库名 + wrangler --project-name）
 - **信息收集规范全部由子技能 [info-collect-spec.md](../earnings-report-skill/references/info-collect-spec.md) 承载，父技能仅代理引用**
 - 阶段 B 输出 JSON 供后续步骤消费（`placeholders_remaining` → 步骤 6；`company_library_*` → 步骤 8；`schedule_*` → 步骤 10；`cloudflare_configured` / `github_login_*` → 步骤 6.5/9）
 - `github_repo_name` / `github_repo_full` / `github_repo_status` / `github_repo_action` → 步骤 6.5.3（GitHub 仓库 clone/init/pull）
@@ -349,13 +349,13 @@ exec bash -l  # 或重新打开终端
 读取步骤 2 输出 JSON 的 `github_repo_status` / `github_repo_action` 字段：
 
 - `github_repo_action=clone` → 仓库存在且本地目录不存在：
-  - `git clone https://github.com/<github_repo_full>.git <paths.repo_dir>`
+  - `git clone https://github.com/<github_repo_full>.git <仓库目录>`
   - 检查并创建 `reports/` 子文件夹
 - `github_repo_action=pull` → 仓库存在且本地目录已存在且非空：
-  - `cd <paths.repo_dir>` + `git pull`（合并远程更新）
+  - `cd <仓库目录>` + `git pull`（合并远程更新）
   - 检查并创建 `reports/` 子文件夹
 - `github_repo_action=init` → 仓库不存在：
-  - 在 `paths.repo_dir` 本地 `git init`
+  - 在仓库目录（= output_root/Output/项目名）本地 `git init`
   - 创建 `reports/` 子文件夹
   - 添加 `.gitignore`（排除 config.local.json / .env-check-result.*.json / .parent-init-done.json）
   - 标记 `github_repo_action=init`（待子技能阶段 8 首次 push 时执行 gh repo create）
@@ -365,7 +365,7 @@ exec bash -l  # 或重新打开终端
   - 也可由父技能直接执行 `gh repo view <github_repo_full> --json name` 重新检查，根据结果执行对应 clone/pull/init 分支
 - `github_repo_action=skip` → 仅 cloudflare 部署，跳过
 
-**路径关系**：`paths.repo_dir = paths.output_dir`（同一目录），`reports/` 建在仓库文件夹下。
+**路径关系**：仓库目录 = `paths.output_root/Output/项目名`（代码运行时推导），`reports/` 建在仓库文件夹下。
 
 #### 步骤 7：同步配置到子技能目录（时机后移到子技能收集完成后，父→子复制仍保留）
 
@@ -785,7 +785,7 @@ python "{parent_skill_dir}\scripts\dispatch-child-skill.py" --ticker "NVDA" --qu
 
 **脚本执行内容**（仅做参数封装和路径校验，实际执行由 LLM 编排）：
 
-1. 从 `config.local.json` 读取 `child_skill_dir`、`output_dir`、`repo_dir`
+1. 从 `config.local.json` 读取 `child_skill_dir`、`output_root`，并按 `output_root/Output/项目名` 推导仓库目录
 2. 校验子技能目录存在、`.parent-init-done.json` 标记存在
 3. 调用 `resolve_python_executable()` 解析 Python 绝对路径（7 级优先级），输出 JSON 的 `script_invocation` 字段为绝对路径
 4. 输出子技能脚本调用序列（JSON），LLM 按此序列执行子技能 9 阶段工作流（`command` 字段已用绝对路径，LLM 直接执行即可）
@@ -794,14 +794,15 @@ python "{parent_skill_dir}\scripts\dispatch-child-skill.py" --ticker "NVDA" --qu
 
 ```
 # 以下命令模板中的 python 须替换为 dispatch-child-skill.py 输出 JSON 的 script_invocation 字段值
-阶段 1：python "{child_skill_dir}\scripts\fetch-data.py" --symbol "NVDA" --out-dir "{output_dir}\data\nvda-q2-fy2026"
+# {仓库目录} = paths.output_root/Output/项目名（代码运行时推导）
+阶段 1：python "{child_skill_dir}\scripts\fetch-data.py" --symbol "NVDA" --out-dir "{仓库目录}\data\nvda-q2-fy2026"
         （fetch-data 完成后自动调用 parse-financial-data.py 输出 6 季度财务摘要）
 阶段 1.5：并行 WebFetch 多站点（★ Trae 用 Task 子代理，公司 IR + 格隆汇 + 富途 + 汇通财经 + 华盛通）
 阶段 2：数据整理与汇率换算（LLM 完成）
 阶段 3：生成 sections JSON（LLM 按 templates/sections-reference.md 规范生成）
 阶段 4：python "{child_skill_dir}\scripts\fill-template.py" --template-file "{child_skill_dir}\references\report-template.md" --sections-file "..." --output-file "..."
-阶段 5：python "{child_skill_dir}\references\build-standalone.py" --source-dir "..." --ticker "{TICKER}" --output-dir "{repo_dir}"（直接输出到 {repo_dir}\reports\{TICKER}\，只保留单文件 HTML）
-阶段 6：python "{child_skill_dir}\references\verify-headless.py" "{repo_dir}\reports\{TICKER}\{filename}.html"
+阶段 5：python "{child_skill_dir}\references\build-standalone.py" --source-dir "..." --ticker "{TICKER}" --output-dir "{仓库目录}"（直接输出到 {仓库目录}\reports\{TICKER}\，只保留单文件 HTML）
+阶段 6：python "{child_skill_dir}\references\verify-headless.py" "{仓库目录}\reports\{TICKER}\{filename}.html"
 阶段 7-9：并行执行清理 + 部署 + 飞书推送（★ Trae 用 Task 子代理）
          飞书推送：python "{child_skill_dir}\references\send-feishu.py" --report-file "..."
 ```
@@ -850,8 +851,7 @@ python "{parent_skill_dir}\scripts\library-manager.py" --action update-status \
     "api_key": "<your-alphavantage-api-key>"
   },
   "paths": {
-    "output_dir": "",
-    "repo_dir": ""
+    "output_root": ""
   },
   "deployment": {
     "targets": ["cloudflare"],
@@ -875,8 +875,7 @@ python "{parent_skill_dir}\scripts\library-manager.py" --action update-status \
 路径字段说明（区分两类目录）：
 
 - `child_skill_dir` / `parent_skill_dir`：**配置文件目录**，留空时初始化自动推断（推荐留空）
-- `paths.output_dir`：**输出目录**，在用户工作空间，留空时由初始化弹窗 0 询问工作根目录后填写为 `<工作根目录>/Output/stock-financial-reports`
-- `paths.repo_dir`：**仓库目录**，同 `paths.output_dir`（git 仓库根目录）
+- `paths.output_root`：**输出根目录**，在用户工作空间（盘符+文件夹），留空时由初始化弹窗 0 询问用户输出根目录后填写；仓库目录 = output_root/Output/项目名（代码运行时推导，不存入 config）
 - `deployment.targets`：Cloudflare 始终必选（不可关闭），GitHub 为可选项
   - `["cloudflare"]`：默认，仅 Cloudflare Pages（推荐）
   - `["cloudflare", "github"]`：Cloudflare + GitHub 双节点（可选追加 GitHub）

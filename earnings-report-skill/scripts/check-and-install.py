@@ -734,26 +734,38 @@ def check_config():
 
 
 def check_git_repo():
-    """检查 git 仓库"""
-    # 从配置读取 repo_dir（统一入口：config.local.json）
-    git_repo = ''
-    if CONFIG_FILE.exists():
-        try:
-            cfg = json.loads(CONFIG_FILE.read_text(encoding='utf-8'))
-            git_repo = cfg.get('paths', {}).get('repo_dir', '')
-        except:
-            pass
-    # 输出/仓库目录不从技能安装路径推断，必须由用户在 config.local.json 显式配置
-    if not git_repo:
+    """检查 git 仓库（仓库目录由 output_root + 项目名推导，不再从 paths.repo_dir 读取）"""
+    if not CONFIG_FILE.exists():
+        return FAIL, 'config.local.json 不存在', ''
+
+    try:
+        cfg = json.loads(CONFIG_FILE.read_text(encoding='utf-8'))
+    except Exception as e:
+        return FAIL, f'读取配置失败: {e}', ''
+
+    # 推导仓库目录：output_root/Output/项目名
+    output_root = cfg.get('paths', {}).get('output_root', '')
+    github_repo = cfg.get('deployment', {}).get('github', {}).get('repo', '')
+    project_name = github_repo.split('/')[-1] if github_repo else ''
+    targets = cfg.get('deployment', {}).get('targets', [])
+
+    if not output_root:
         return FAIL, (
-            'paths.repo_dir 未配置。请在 config.local.json 的 paths.repo_dir 填写 git 仓库根目录'
-            '（如 d:/TraeAutomaticTools/Output/stock-financial-reports）。'
-            '★ 输出目录与配置文件目录是不同概念：配置文件在技能安装目录，输出目录在用户工作空间。'
+            'paths.output_root 未配置。请在 config.local.json 的 paths.output_root 填写输出根目录'
+            '（盘符+文件夹，如 d:/TraeAutomaticTools）。'
         ), ''
+    if not project_name:
+        return FAIL, 'deployment.github.repo 未配置，无法推导仓库目录', ''
+
+    git_repo = os.path.join(output_root, 'Output', project_name)
+
+    # 仅双部署时需要检查 .git 目录
+    if 'github' not in targets:
+        return PASS, f'仅 Cloudflare 部署，仓库目录 {git_repo} 不需要 git init', ''
 
     git_dir = os.path.join(git_repo, '.git')
     if not os.path.isdir(git_dir):
-        return FAIL, f'未找到 .git 目录: {git_repo}（请在 config.local.json 的 paths.repo_dir 填写正确的 git 仓库根目录）', ''
+        return FAIL, f'未找到 .git 目录: {git_repo}（双部署方案需在仓库目录执行 git init）', ''
 
     # 检查 remote
     rc, out, _ = run_cmd(f'git -C "{git_repo}" remote get-url origin', timeout=5)

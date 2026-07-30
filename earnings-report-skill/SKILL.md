@@ -13,7 +13,7 @@ description: "自动生成上市公司最新财报深度分析HTML报告（含�
 
 - **★ 跨平台**：所有脚本统一为 Python 3 单文件入口（Windows/Mac/Linux 通用），消除双平台 .ps1/.sh 维护负担；Chrome headless 验证
 - **统一存放**：最终 HTML 存放在 git 仓库 `reports/{TICKER}/{company-slug}-{quarter}-earnings.html`，TICKER 为股票代码大写
-- **路径可配置**：通过 `config.local.json` 的 `paths.output_dir` / `paths.repo_dir` 自定义；路径分类规则：配置文件目录基于技能安装目录推断，输出/仓库目录在用户工作空间需显式配置
+- **路径可配置**：通过 `config.local.json` 的 `paths.output_root` 自定义（仓库目录由代码推导，不存入 config）；路径分类规则：配置文件目录基于技能安装目录推断，输出根目录在用户工作空间需显式配置
 
 ## 关键地址与配置
 
@@ -25,8 +25,8 @@ description: "自动生成上市公司最新财报深度分析HTML报告（含�
 | GitHub Pages URL | `https://{github-user}.github.io/{repo-name}/reports/{TICKER}/{filename}.html`（从 `deployment.github.repo` 推导，可选备用） | — |
 | Cloudflare Pages 项目名 | 运行时从 `deployment.github.repo` 提取仓库名（取 `/` 后的部分），不在配置文件中定义（必选） | — |
 | Cloudflare Pages URL | `https://earnings-reports.pages.dev/reports/{TICKER}/{filename}.html`（★ 主链接，必选） | — |
-| 本地 git 仓库路径 | 用户工作空间：`config.local.json` 的 `paths.repo_dir`，默认 `<工作根目录>/Output/stock-financial-reports`（需为 git 仓库根目录，**不从技能安装路径推断**）| **输出目录** |
-| 输出目录路径 | 用户工作空间：`config.local.json` 的 `paths.output_dir`，默认 `<工作根目录>/Output/stock-financial-reports`（**不从技能安装路径推断**）| **输出目录** |
+| 本地 git 仓库路径 | 仓库目录 = `paths.output_root`/Output/项目名（代码推导，不存入 config；项目名从 `deployment.github.repo` 提取仓库名） | **输出目录** |
+| 输出根目录 | `paths.output_root`（用户输入盘符+文件夹，如 `d:\TraeAutomaticTools`） | **输出目录** |
 | 配置文件目录 | 技能安装目录：`config.local.json` / `.env-check-result.*.json` 均在技能安装目录（基于 `Path(__file__).resolve().parent.parent` 推断）| **配置文件目录** |
 
 **API Key 获取地址**：
@@ -50,16 +50,15 @@ description: "自动生成上市公司最新财报深度分析HTML报告（含�
     "api_key": "<your-alphavantage-api-key>"
   },
   "paths": {
-    "output_dir": "",
-    "repo_dir": ""
+    "output_root": ""
   }
 }
 ```
 
 路径分类规则（区分两类目录）：
 - **配置文件目录**（config.local.json / .env-check-result.*.json）：基于技能安装目录推断（`Path(__file__).resolve().parent.parent`），无需用户配置
-- **输出/仓库目录**（paths.output_dir / paths.repo_dir）：在用户工作空间，**不从技能安装路径推断**；留空时脚本抛错提示用户配置
-- `paths.output_dir` / `paths.repo_dir`：默认 `<工作根目录>/Output/stock-financial-reports`，由父技能初始化时填写
+- **输出根目录**（paths.output_root）：在用户工作空间，**不从技能安装路径推断**；留空时脚本抛错提示用户配置
+- `paths.output_root`：用户输入的输出根目录（盘符+文件夹，如 `d:\TraeAutomaticTools`）；仓库目录 = `output_root`/Output/项目名（代码运行时推导，项目名从 `deployment.github.repo` 提取仓库名）
 
 **★ 配置统一入口**：所有配置项（API Key、Webhook URL、路径）统一从 `config.local.json` 加载，不再支持环境变量，降低复杂性。
 
@@ -151,7 +150,7 @@ python "{skill_dir}/scripts/collect-user-info.py" --mode standalone --check-only
 
 **核心说明**：
 - 采用两阶段调用协议（阶段 A 输出弹窗规范 → LLM 执行 AskUserQuestion → 阶段 B 写入 config）
-- standalone 模式收集 6 项（工作根目录、API Key、飞书 Webhook、公司库导入方案、部署方案、GitHub 仓库名称→`deployment.github.repo`），**不收集调度间隔**（子技能无定时调度任务环节）；GitHub 仓库名称仅当部署方案选择 cloudflare_github 时收集
+- standalone 模式收集 6 项（输出根目录、API Key、飞书 Webhook、公司库导入方案、部署方案、GitHub 仓库名称→`deployment.github.repo`），**不收集调度间隔**（子技能无定时调度任务环节）；GitHub 仓库名称仅当部署方案选择 cloudflare_github 时收集
 - proxy 模式收集 7 项（增加调度间隔，写入父技能 config 的 `schedule` 字段；GitHub 仓库名称仅当部署方案选择 cloudflare_github 时收集）
 - 脚本不直接调用 AskUserQuestion，通过两阶段调用协议实现跨 Agent 兼容
 - `gh auth login` / `wrangler login` 是系统级交互操作，脚本仅检测状态，实际登录由 LLM 执行
@@ -175,8 +174,8 @@ python "{skill_dir}/scripts/collect-user-info.py" --mode standalone --check-only
 
 ```bash
 # 跨平台统一调用
-python "{skill_dir}/scripts/fetch-data.py" --symbol "NOK" --out-dir "{output_dir}/data/nok-data"
-# OutDir 省略时自动从 config.local.json 的 paths.output_dir / 平台默认值 读取
+python "{skill_dir}/scripts/fetch-data.py" --symbol "NOK" --out-dir "{repo_root}/data/nok-data"
+# OutDir 省略时自动从 config.local.json 的 paths.output_root 推导仓库目录（output_root/Output/项目名）
 python "{skill_dir}/scripts/fetch-data.py" --symbol "NOK"
 ```
 
@@ -273,8 +272,8 @@ LLM 生成完整 sections JSON，遵循 `templates/sections-reference.md` 规范
 # 跨平台统一调用（统一为 Python 入口）
 python "{skill_dir}/scripts/fill-template.py" \
     --template-file "{skill_dir}/references/report-template.md" \
-    --sections-file "{output_dir}/data/nok-q2-2026-sections.json" \
-    --output-file "{output_dir}/nok-q2-2026-earnings/index.html"
+    --sections-file "{repo_root}/data/nok-q2-2026-sections.json" \
+    --output-file "{repo_root}/nok-q2-2026-earnings/index.html"
 ```
 
 脚本自动：读取模板和 JSON → 替换 meta 占位符（10 个）→ 替换 header/12 section/footer 块（正则匹配）→ **结构完整性校验** → 清理剩余占位符 → 输出 index.html。
@@ -302,27 +301,27 @@ python "{skill_dir}/scripts/fill-template.py" \
 # 跨平台统一调用（统一为 Python 入口）
 # ★ --ticker 必传：股票代码大写（如 NOK），用于创建 reports/{TICKER}/ 子目录，每个公司用子文件夹隔离
 python "{skill_dir}/references/build-standalone.py" \
-    --source-dir "{output_dir}/nok-q2-2026-earnings" \
+    --source-dir "{repo_root}/nok-q2-2026-earnings" \
     --ticker "NOK" \
-    --output-dir "{output_dir}"
+    --output-dir "{repo_root}"
 ```
 
 脚本自动（使用 Python 字符串 .replace() 精确匹配，避免正则不稳定）：
 1. echarts.min.js 自动复制（从 `skill/assets/js/echarts.min.js` 复制到 `$SOURCE_DIR/_shared/js/`，无需网络下载）
 2. 内联 echarts.min.js 和 charts.js（转义 `</script>` 为 `<\/script>`）
-3. 输出单文件到 `paths.output_dir/reports/{TICKER}/{company-slug}-{quarter}-earnings.html`（repo_dir = output_dir，reports 建在仓库文件夹下）
+3. 输出单文件到 `仓库目录/reports/{TICKER}/{company-slug}-{quarter}-earnings.html`（仓库目录 = `output_root`/Output/项目名，由代码推导，不存入 config）
 
 **★ reports 目录规范**：
-- 路径：`paths.repo_dir/reports/{TICKER}/{company-slug}-{quarter}-earnings.html`
+- 路径：`仓库目录/reports/{TICKER}/{company-slug}-{quarter}-earnings.html`（仓库目录 = `output_root`/Output/项目名）
 - **只保留最终单文件 HTML**，不复制 index.html 副本，不保留 _shared/js/、assets/charts.js 等中间产物
 - 每个公司用子文件夹隔离（按 TICKER 大写命名，如 `reports/NOK/`、`reports/NVDA/`）
-- 源目录 `{output_dir}/{company-slug}-{quarter}-earnings/`（含 index.html、assets/charts.js 等中间产物）由阶段 7 资源清理删除
+- 源目录 `{repo_root}/{company-slug}-{quarter}-earnings/`（含 index.html、assets/charts.js 等中间产物）由阶段 7 资源清理删除
 
 ### 阶段 6：无头浏览器验证
 
 ```bash
 # 跨平台统一调用（仅保留 .py 主入口，删除 .ps1/.sh 包装器）
-python "{skill_dir}/references/verify-headless.py" "{repo_dir}/reports/{TICKER}/{company-slug}-{quarter}-earnings.html"
+python "{skill_dir}/references/verify-headless.py" "{repo_root}/reports/{TICKER}/{company-slug}-{quarter}-earnings.html"
 ```
 
 `verify-headless.py` 跨平台（Python 3 通用，内置 Chrome 三平台路径检测）。
@@ -379,13 +378,15 @@ Chrome 不可用时自动退化为纯 HTML 结构验证（不执行 JS，无法�
 
 ```powershell
 # Windows
-# repo_dir 从 config.local.json 读取，默认 <工作根目录>/Output/stock-financial-reports（不从技能安装路径推断）
-$repoDir = "<从 config.local.json paths.repo_dir 读取，如 d:\TraeAutomaticTools\Output\earnings-reports>"
-# CF_PROJECT 从 deployment.github.repo 提取仓库名（取 / 后的部分，无 / 则整体）
+# repo_root 从 config.local.json 的 paths.output_root + deployment.github.repo 推导（仓库目录 = output_root/Output/项目名）
+$OutputRoot = "<从 config.local.json paths.output_root 读取，如 d:\TraeAutomaticTools>"
+# CF_PROJECT 从 deployment.github.repo 提取仓库名（取 / 后的部分，无 / 则整体），同时作为仓库子目录名
 $ghRepo = "<从 config.local.json deployment.github.repo 读取，如 wxdpop/stock-financial-reports>"
 $CF_PROJECT = if ($ghRepo.Contains("/")) { $ghRepo.Split("/")[-1] } else { $ghRepo }
-$src = "$repoDir\reports"
-$dst = "$repoDir\cf-pages-deploy\reports"
+# 仓库目录 = output_root/Output/项目名（代码推导）
+$repoRoot = Join-Path $OutputRoot "Output\$CF_PROJECT"
+$src = "$repoRoot\reports"
+$dst = "$repoRoot\cf-pages-deploy\reports"
 # 1. 复制 reports/ 到 cf-pages-deploy/reports/（.NET API）
 [System.IO.Directory]::CreateDirectory($dst) | Out-Null
 Get-ChildItem -LiteralPath $src -Recurse | ForEach-Object {
@@ -394,24 +395,26 @@ Get-ChildItem -LiteralPath $src -Recurse | ForEach-Object {
     else { [System.IO.File]::Copy($_.FullName, $dest, $true) }
 }
 # 2. 从 cf-pages-deploy 目录部署（切勿直接部署 reports 目录）
-Set-Location "$repoDir\cf-pages-deploy"
+Set-Location "$repoRoot\cf-pages-deploy"
 npx --yes wrangler pages deploy . --project-name "$CF_PROJECT" --branch main --commit-dirty=true
 # 3. 清理临时目录
-[System.IO.Directory]::Delete("$repoDir\cf-pages-deploy", $true)
+[System.IO.Directory]::Delete("$repoRoot\cf-pages-deploy", $true)
 ```
 
 ```bash
 # Mac/Linux
-# repo_dir 从 config.local.json 读取，默认 <工作根目录>/Output/stock-financial-reports（不从技能安装路径推断）
-repo_dir="<从 config.local.json paths.repo_dir 读取，如 ~/TraeAutomaticTools/Output/stock-financial-reports>"
-# CF_PROJECT 从 deployment.github.repo 提取仓库名（取 / 后的部分，无 / 则整体）
+# repo_root 从 config.local.json 的 paths.output_root + deployment.github.repo 推导（仓库目录 = output_root/Output/项目名）
+output_root="<从 config.local.json paths.output_root 读取，如 ~/TraeAutomaticTools>"
+# CF_PROJECT 从 deployment.github.repo 提取仓库名（取 / 后的部分，无 / 则整体），同时作为仓库子目录名
 gh_repo="<从 config.local.json deployment.github.repo 读取，如 wxdpop/stock-financial-reports>"
 CF_PROJECT="${gh_repo##*/}"
-mkdir -p "$repo_dir/cf-pages-deploy/reports"
-cp -r "$repo_dir/reports/." "$repo_dir/cf-pages-deploy/reports/"
-cd "$repo_dir/cf-pages-deploy"
+# 仓库目录 = output_root/Output/项目名（代码推导）
+repo_root="$output_root/Output/$CF_PROJECT"
+mkdir -p "$repo_root/cf-pages-deploy/reports"
+cp -r "$repo_root/reports/." "$repo_root/cf-pages-deploy/reports/"
+cd "$repo_root/cf-pages-deploy"
 npx --yes wrangler pages deploy . --project-name "$CF_PROJECT" --branch main --commit-dirty=true
-rm -rf "$repo_dir/cf-pages-deploy"
+rm -rf "$repo_root/cf-pages-deploy"
 ```
 
 **★ 关键教训**：`wrangler pages deploy <dir>` 会将 `<dir>` 内容上传到 Pages 根目录。直接部署 `reports` 目录会变成 `/NFLX/xxx.html`（错误）；必须从包含 `reports/` 子目录的父目录部署，路径才是 `/reports/NFLX/xxx.html`（正确）。
@@ -469,11 +472,11 @@ Webhook URL 从 config.local.json 的 `feishu.webhook_url`（嵌套结构）加�
 
 ### 文件路径与命名
 
-- **最终存放路径**：`{repo_dir}/reports/{TICKER}/{company-slug}-{quarter}-earnings.html`
+- **最终存放路径**：`{repo_root}/reports/{TICKER}/{company-slug}-{quarter}-earnings.html`
 - **TICKER**：股票代码大写（如 JPM/TSLA/ASML）
 - **company-slug**：小写英文无空格（如 nok、tsmc、alphabet）
 - **quarter 格式**：`q{N}-{YYYY}`（如 q2-2026）
-- **占位符**：`{output_dir}` = 输出目录，`{skill_dir}` = 技能根目录，`{repo_dir}` = git 仓库目录
+- **占位符**：`{repo_root}` = 仓库目录（= `output_root`/Output/项目名，由代码推导），`{skill_dir}` = 技能根目录
 - **脚本命名**：统一为 Python 单文件入口（`.py`），不再提供 `.ps1` / `.sh` 双版本；环境检测与 Chrome 路径检测在脚本内部按 `platform.system()` 分支处理
 
 ### 跨平台脚本统一入口
@@ -501,7 +504,7 @@ Webhook URL 从 config.local.json 的 `feishu.webhook_url`（嵌套结构）加�
 
 - **严禁硬编码**：飞书 Webhook URL、API 密钥、令牌等敏感信息
 - **传入方式**：config.local.json（唯一入口，被 .gitignore 排除）
-- **配置字段**：`feishu.webhook_url`、`finnhub.api_key`、`alphavantage.api_key`、`paths.output_dir`、`paths.repo_dir`（均为嵌套结构）
+- **配置字段**：`feishu.webhook_url`、`finnhub.api_key`、`alphavantage.api_key`、`paths.output_root`（均为嵌套结构）
 - **config.local.json 必须被 .gitignore 排除**，仅提交 config.example.json 模板
 - **提交前自查**：
   - Windows：`git diff --cached | findstr /i "hook webhook api_key token password secret"`
@@ -556,14 +559,14 @@ earnings-report-skill/
 **生成的报告目录**（在用户工作空间的 git 仓库下，非 skill 目录）：
 
 ```
-<工作根目录>/Output/stock-financial-reports/    # 用户工作空间
+{output_root}/Output/{项目名}/                # 用户工作空间（仓库目录，由代码推导）
 ├── reports/{TICKER}/                 # 最终 HTML 统一存放点
 │   └── {company-slug}-{quarter}-earnings.html
 └── data/{symbol}-{quarter}/          # API 数据（供调试）
     └── {symbol}-{profile|recommendations|income-statement|balance-sheet|cashflow}.json
 ```
 
-`repo_dir` 从 `config.local.json` 的 `paths.repo_dir` 读取，默认 `<工作根目录>/Output/stock-financial-reports`（不从技能安装路径推断）。
+仓库目录 = `paths.output_root`/Output/项目名（代码运行时推导，项目名从 `deployment.github.repo` 提取仓库名；`paths.output_root` 为用户输入的输出根目录，盘符+文件夹）。
 
 ### 报告结构（12 章节固定顺序）
 

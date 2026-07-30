@@ -95,16 +95,20 @@ def get_nested(obj, *keys, default=''):
 
 
 def resolve_output_dir(arg_output_dir, config):
-    """解析输出目录优先级：参数 → config.paths.output_dir → 抛错（移除硬编码兜底）"""
+    """解析仓库根目录优先级：参数 → 代码推导(output_root/Output/项目名) → 抛错"""
     if arg_output_dir:
         return arg_output_dir
-    cfg_output = get_nested(config, 'paths', 'output_dir')
-    if cfg_output:
-        return cfg_output
-    # 输出目录不在技能安装路径推断，必须由用户在 config.local.json 显式配置
+    # 推导仓库根目录：output_root/Output/项目名
+    output_root = get_nested(config, 'paths', 'output_root')
+    github_repo = get_nested(config, 'deployment', 'github', 'repo')
+    project_name = github_repo.split('/')[-1] if github_repo else ''
+    if output_root and project_name:
+        return os.path.join(output_root, 'Output', project_name)
+    # 无法推导，抛错提示用户配置
     raise RuntimeError(
-        "paths.output_dir 未配置。请在 config.local.json 的 paths.output_dir 填写输出根目录"
-        "（如 d:/TraeAutomaticTools/Output/stock-financial-reports），或通过 --output-dir 参数传入。"
+        "无法推导仓库根目录。请确保 config.local.json 的 paths.output_root "
+        "（盘符+文件夹，如 d:/TraeAutomaticTools）和 deployment.github.repo 已配置，"
+        "或通过 --output-dir 参数传入。"
     )
 
 

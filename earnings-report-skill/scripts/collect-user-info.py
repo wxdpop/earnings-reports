@@ -167,14 +167,16 @@ def build_dialogs_spec(mode):
     dialogs = [
         {
             'dialog_id': 'dialog_0_workroot',
-            'collect_item': '工作根目录（输出目录定位）',
-            'field_mapping': ['paths.output_dir', 'paths.repo_dir'],
-            'description': '用于填写 config.local.json 的 paths.output_dir 和 paths.repo_dir，与技能安装目录无关',
+            'collect_item': '输出根目录（盘符+文件夹）',
+            'field_mapping': ['paths.output_root'],
+            'description': '用户输入输出根目录（盘符+文件夹），代码运行时拼接为 仓库目录 = output_root/Output/项目名。与技能安装目录无关',
             'options': [
-                {'label': '使用当前工作目录（推荐）', 'value': '__cwd__', 'hint': '自动获取当前工作目录作为工作根目录'},
-                {'label': '手动输入工作根目录', 'value': '__user_input__', 'hint': '用户打字输入绝对路径，如 d:\\TraeAutomaticTools 或 ~/projects'}
+                {'label': '手动输入输出根目录', 'value': '__user_input__', 'hint': '用户打字输入绝对路径（盘符+文件夹），如 d:\\TraeAutomaticTools 或 ~/projects'}
             ],
-            'value_transform': '若选 __cwd__，output_dir = <cwd>/Output/stock-financial-reports，repo_dir 同 output_dir；若选 __user_input__，output_dir = <用户输入>/Output/stock-financial-reports，repo_dir 同 output_dir'
+            'user_input_required': True,
+            'input_hint': '请输入输出根目录（盘符+文件夹，如 D:\\TraeAutomaticTools）',
+            'value_transform': '用户输入值直接写入 paths.output_root，不再拼接 Output/项目名（由代码运行时推导）',
+            'constraint': '路径必须为绝对路径，不含相对路径符号'
         },
         {
             'dialog_id': 'dialog_1_schedule',
@@ -192,10 +194,10 @@ def build_dialogs_spec(mode):
             'collect_item': 'API Key 状态',
             'field_mapping': ['finnhub.api_key', 'alphavantage.api_key'],
             'options': [
-                {'label': '已有 Finnhub + Alpha Vantage API Key', 'value': 'have_both'},
                 {'label': '需注册 Finnhub API Key', 'value': 'need_finnhub', 'hint': 'https://finnhub.io/register'},
                 {'label': '需注册 Alpha Vantage API Key', 'value': 'need_alphavantage', 'hint': 'https://www.alphavantage.support/free-api-key'},
-                {'label': '需注册两个 API Key', 'value': 'need_both', 'hint': 'https://finnhub.io/register 和 https://www.alphavantage.support/free-api-key'}
+                {'label': '需注册两个 API Key', 'value': 'need_both', 'hint': 'https://finnhub.io/register 和 https://www.alphavantage.support/free-api-key'},
+                {'label': '已有 Finnhub + Alpha Vantage API Key', 'value': 'have_both', 'user_input_required': True, 'input_hint': '请输入两个 API Key，逗号分隔，顺序：Finnhub,Alpha Vantage（如 d9hgjd9r01qhv00m6u8g,W94IQXQNUM78UAA1）'}
             ]
         },
         {
@@ -231,16 +233,16 @@ def build_dialogs_spec(mode):
             'constraint': 'Cloudflare 始终必选（不可关闭）；GitHub 为可选项，默认不启用'
         },
         {
-            'dialog_id': 'dialog_6_github_repo',
-            'collect_item': 'GitHub 仓库名称',
+            'dialog_id': 'dialog_6_project_name',
+            'collect_item': '项目名称',
             'field_mapping': ['deployment.github.repo'],
-            'conditional_on': {'dialog_id': 'dialog_5_deployment', 'choice': 'cloudflare_github'},
-            'description': '仅当弹窗 5 选择 Cloudflare + GitHub 双节点时展示。收集脚本通过 gh api user 获取用户名后补全为 用户名/仓库名',
+            'description': '用于 GitHub 仓库名 + Cloudflare Pages 项目名（wrangler --project-name）。无论哪种部署方案都需收集，因为仓库目录推导依赖项目名',
             'options': [
-                {'label': '使用默认仓库名 stock-financial-reports（推荐）', 'value': 'stock-financial-reports'},
-                {'label': '手动输入仓库名', 'value': '__user_input__', 'hint': '用户打字输入仓库名（仅仓库名，不含用户名前缀），如 my-earnings-reports'}
+                {'label': '使用默认项目名称 stock-financial-reports（推荐）', 'value': 'stock-financial-reports'},
+                {'label': '手动输入项目名称', 'value': '__user_input__', 'hint': '仅允许小写字母、数字、连字符，如 my-earnings-reports'}
             ],
-            'constraint': 'gh 未登录时仅写入仓库名，步骤 6.5.2 完成 gh auth login 后由父技能补全为 用户名/仓库名'
+            'validation': {'pattern': '^[a-z0-9][a-z0-9-]*$', 'description': '必须全英文小写字母+数字+连字符，不以连字符开头'},
+            'constraint': '同时作为 GitHub 仓库名 和 wrangler --project-name 的值；gh 登录时补全为 用户名/项目名'
         }
     ]
     # standalone 模式不收集调度间隔（子技能无定时调度任务环节）
@@ -256,20 +258,20 @@ def build_dialogs_spec(mode):
 
 def apply_answers(config, answers, mode):
     """阶段 B：将用户答案应用到 config 字典"""
-    # 弹窗 0：工作根目录
-    ans0 = answers.get('dialog_0_workroot', {})
-    choice0 = ans0.get('choice', '')
-    if choice0 == '__cwd__':
-        workroot = str(Path.cwd())
-    elif choice0 == '__user_input__':
-        workroot = ans0.get('user_input', str(Path.cwd()))
-    else:
-        workroot = choice0 or str(Path.cwd())
+    import re
 
-    output_dir = str(Path(workroot) / 'Output' / 'stock-financial-reports')
+    # 弹窗 0：输出根目录（用户输入，直接写入 paths.output_root）
+    ans0 = answers.get('dialog_0_workroot', {})
+    choice0 = ans0.get('choice', '__user_input__')
+    if choice0 == '__user_input__':
+        output_root = ans0.get('user_input', '').strip()
+    else:
+        output_root = choice0 or ''
     config.setdefault('paths', {})
-    config['paths']['output_dir'] = output_dir
-    config['paths']['repo_dir'] = output_dir
+    config['paths']['output_root'] = output_root
+    # 删除旧字段（兼容旧 config 迁移）
+    config['paths'].pop('output_dir', None)
+    config['paths'].pop('repo_dir', None)
 
     # 弹窗 1：调度间隔（仅 proxy 模式写入 schedule，因为 schedule 是父技能专有字段）
     if mode == 'proxy':
@@ -280,17 +282,30 @@ def apply_answers(config, answers, mode):
         config['schedule']['cron'] = cron
         config['schedule']['timezone'] = 'Asia/Shanghai'
 
-    # 弹窗 2：API Key（不在此处填入真实值，仅标记后续需引导编辑）
-    # 真实 API Key 由用户手动编辑 config.local.json 填入
+    # 弹窗 2：API Key
     ans2 = answers.get('dialog_2_api_key', {})
     choice2 = ans2.get('choice', '')
-    if 'finnhub' not in config or config.get('finnhub', {}).get('api_key', '') in ('', '<your-finnhub-api-key>'):
-        config.setdefault('finnhub', {})
-        if config['finnhub'].get('api_key', '') == '':
+    config.setdefault('finnhub', {})
+    config.setdefault('alphavantage', {})
+    if choice2 == 'have_both':
+        # 用户已有 API Key，从输入框解析（格式：Finnhub_key,Alpha_Vantage_key）
+        user_input = ans2.get('user_input', '')
+        # 支持中英文逗号
+        parts = [p.strip() for p in re.split(r'[,，]', user_input) if p.strip()]
+        if len(parts) >= 2:
+            config['finnhub']['api_key'] = parts[0]
+            config['alphavantage']['api_key'] = parts[1]
+        else:
+            # 解析失败，保留占位符
+            if config['finnhub'].get('api_key', '') in ('', '<your-finnhub-api-key>'):
+                config['finnhub']['api_key'] = '<your-finnhub-api-key>'
+            if config['alphavantage'].get('api_key', '') in ('', '<your-alphavantage-api-key>'):
+                config['alphavantage']['api_key'] = '<your-alphavantage-api-key>'
+    else:
+        # 其他选项：确保占位符存在
+        if config['finnhub'].get('api_key', '') in ('', '<your-finnhub-api-key>'):
             config['finnhub']['api_key'] = '<your-finnhub-api-key>'
-    if 'alphavantage' not in config or config.get('alphavantage', {}).get('api_key', '') in ('', '<your-alphavantage-api-key>'):
-        config.setdefault('alphavantage', {})
-        if config['alphavantage'].get('api_key', '') == '':
+        if config['alphavantage'].get('api_key', '') in ('', '<your-alphavantage-api-key>'):
             config['alphavantage']['api_key'] = '<your-alphavantage-api-key>'
 
     # 弹窗 3：飞书 Webhook
@@ -322,28 +337,26 @@ def apply_answers(config, answers, mode):
         targets = ['cloudflare']
         github_enabled = False
 
-    # 弹窗 6：GitHub 仓库名称（仅当选择 cloudflare_github 时处理）
-    github_repo_name = ''
-    github_repo_full = ''
-    if choice5 == 'cloudflare_github':
-        ans6 = answers.get('dialog_6_github_repo', {})
-        choice6 = ans6.get('choice', 'stock-financial-reports')
-        if choice6 == '__user_input__':
-            github_repo_name = ans6.get('user_input', 'stock-financial-reports').strip()
-        else:
-            github_repo_name = choice6 or 'stock-financial-reports'
-        # 通过 gh api user 获取用户名补全为 用户名/仓库名
-        gh_user = get_gh_username()
-        if gh_user:
-            github_repo_full = f"{gh_user}/{github_repo_name}"
-        else:
-            # gh 未登录或不可用，仅写入仓库名，步骤 6.5.2 登录后由父技能补全
-            github_repo_full = github_repo_name
+    # 弹窗 6：项目名称（始终收集，无论哪种部署方案）
+    ans6 = answers.get('dialog_6_project_name', {})
+    choice6 = ans6.get('choice', 'stock-financial-reports')
+    if choice6 == '__user_input__':
+        project_name = ans6.get('user_input', 'stock-financial-reports').strip()
     else:
-        # 仅 cloudflare 时，仓库名用默认值（wrangler 运行时从 repo 提取仓库名作为 --project-name）
-        github_repo_name = 'stock-financial-reports'
-        # 仅 cloudflare 时 github.repo 也写入仓库名（wrangler 从 repo 提取仓库名作为 --project-name）
-        github_repo_full = github_repo_name
+        project_name = choice6 or 'stock-financial-reports'
+    # 项目名正则校验：全英文小写+数字+连字符，不以连字符开头
+    if not re.match(r'^[a-z0-9][a-z0-9-]*$', project_name):
+        # 校验失败，回退默认值
+        project_name = 'stock-financial-reports'
+    github_repo_name = project_name
+
+    # 通过 gh api user 获取用户名补全为 用户名/项目名
+    gh_user = get_gh_username()
+    if gh_user:
+        github_repo_full = f"{gh_user}/{project_name}"
+    else:
+        # gh 未登录或不可用，仅写入项目名，步骤 6.5.2 登录后由父技能补全
+        github_repo_full = project_name
 
     config.setdefault('deployment', {})
     config['deployment']['targets'] = targets
@@ -352,7 +365,7 @@ def apply_answers(config, answers, mode):
         config['deployment']['cloudflare']['api_token'] = '<your-cloudflare-api-token>'
     if config['deployment']['cloudflare'].get('account_id', '') == '':
         config['deployment']['cloudflare']['account_id'] = '<your-cloudflare-account-id>'
-    # wrangler --project-name 不存入 config，运行时从 deployment.github.repo 提取仓库名推导
+    # wrangler --project-name 运行时从 deployment.github.repo 提取项目名（取 / 后的部分）
     config['deployment'].setdefault('github', {})
     config['deployment']['github']['enabled'] = github_enabled
     config['deployment']['github']['repo'] = github_repo_full
@@ -382,9 +395,12 @@ def build_final_status(config, mode, collected_meta):
         github_repo_status = check_github_repo(github_repo_full)
         # 推导 github_repo_action
         if github_repo_status == 'exists':
-            # 仓库存在，需检查本地目录是否已存在且非空（决定 clone 还是 pull）
-            repo_dir = config.get('paths', {}).get('repo_dir', '')
-            if repo_dir and Path(repo_dir).exists() and any(Path(repo_dir).iterdir()):
+            # 仓库存在，需检查本地仓库目录是否已存在且非空（决定 clone 还是 pull）
+            # 仓库目录 = output_root/Output/项目名（代码推导，不再从 paths.repo_dir 读取）
+            output_root = config.get('paths', {}).get('output_root', '')
+            project_name = github_repo_full.split('/')[-1] if github_repo_full else ''
+            repo_root = str(Path(output_root) / 'Output' / project_name) if output_root and project_name else ''
+            if repo_root and Path(repo_root).exists() and any(Path(repo_root).iterdir()):
                 github_repo_action = 'pull'
             else:
                 github_repo_action = 'clone'
@@ -568,7 +584,7 @@ def main():
     # 应用答案
     collected_meta = apply_answers(config, answers, args.mode)
     collected_meta['collected_fields'] = [
-        'paths.output_dir', 'paths.repo_dir',
+        'paths.output_root',
         'finnhub.api_key', 'alphavantage.api_key', 'feishu.webhook_url',
         'deployment.targets', 'deployment.github.enabled'
     ]
