@@ -40,7 +40,7 @@ SKILL 自动监控公司库并生成的上市公司财报深度分析报告，�
     ↓
 步骤 1：加载父技能配置
     ↓
-步骤 2：★ 信息收集前置（6 项用户交互一次性收集）
+步骤 2：★ 信息收集前置（★ v3.2.3 起由子技能 collect-user-info.py 代理收集 6 项）
     │   工作根目录 + 调度间隔 + API Key + Webhook + 公司库 + 部署方案
     ↓
 步骤 3：Python 前提项检测 + LLM 自动安装
@@ -49,11 +49,11 @@ SKILL 自动监控公司库并生成的上市公司财报深度分析报告，�
     ↓
 步骤 5：校验子技能缓存
     ↓
-步骤 6：引导用户编辑 config.local.json
+步骤 6：引导用户编辑 config.local.json（占位符检测由子技能脚本统一执行）
     ↓
-步骤 6.5：Cloudflare API Token + GitHub 可选登录
+步骤 6.5：Cloudflare API Token + GitHub 可选登录（引导文案由子技能脚本输出）
     ↓
-步骤 7：同步配置到子技能目录
+步骤 7：同步配置到子技能目录（父→子复制，时机后移到收集完成后）
     ↓
 步骤 8：导入公司库（如美股 7 巨头）
     ↓
@@ -249,21 +249,17 @@ python "{skill_dir}/references/verify-headless.py" "{repo_dir}/reports/TSLA/tsla
 AI 会按 11 步流程自动完成：
 
 1. **加载父技能配置**：基于当前技能安装路径推断 `parent_skill_dir`、`child_skill_dir`
-2. **★ 信息收集前置**（6 项用户交互一次性收集）：
-   - 弹窗 0：工作根目录（用于填写 `paths.output_dir` 和 `paths.repo_dir`）
-   - 弹窗 1：调度间隔（默认每 12 小时）
-   - 弹窗 2：API Key 状态（已有 / 需注册 Finnhub / Alpha Vantage）
-   - 弹窗 3：飞书 Webhook 状态（已有 / 需配置 / 跳过）
-   - 弹窗 4：公司库导入方案（美股 7 巨头 / 中概股龙头 / 自定义）
-   - 弹窗 5：部署方案（仅 Cloudflare（默认） / Cloudflare + GitHub 双节点）
+2. **★ 信息收集前置**（★ v3.2.3 起由子技能 `collect-user-info.py --mode proxy` 代理收集 6 项）：
+   - 调用子技能脚本输出弹窗规范 JSON → LLM 执行 AskUserQuestion → 回传答案 → 脚本写入父技能 config.local.json
+   - 收集项：工作根目录 / 调度间隔 / API Key 状态 / 飞书 Webhook / 公司库导入方案 / 部署方案
 3. **Python 前提项检测 + LLM 自动安装**：检测到 Python 不存在时直接调用 winget/brew/apt 安装
 4. **调用子技能环境检测脚本**：执行 `check-and-install.py`，9 项依赖并行检查 + 自动安装
 5. **校验子技能缓存**：确认 `.env-check-result.{platform}.json` 生成且 `all_pass=true`
-6. **引导用户编辑 config.local.json**：如步骤 2 标记需注册 API Key / 配置 Webhook
-7. **同步配置到子技能目录**：去除父技能专有字段后复制到子技能 `config.local.json`
-8. **导入公司库**：按步骤 2.4 选择执行（如导入美股 7 巨头）
-9. **写入父技能初始化标记**：`.parent-init-done.json`
-10. **★ 自动创建定时任务**：通过 TRAE `Schedule` 工具创建（默认每 12 小时）
+6. **引导用户编辑 config.local.json**：读取步骤 2 输出 JSON 的 `placeholders_remaining` 字段，按 `next_actions` 输出注册地址
+7. **同步配置到子技能目录**：父→子复制（去除 `child_skill_dir`/`parent_skill_dir`/`python_executable`/`schedule` 字段），时机后移到收集完成后
+8. **导入公司库**：从步骤 2 输出 JSON 的 `company_library_choice` / `company_library_tickers` 字段读取方案
+9. **写入父技能初始化标记**：`.parent-init-done.json`（标记值从步骤 2 输出 JSON 读取）
+10. **★ 自动创建定时任务**：通过 TRAE `Schedule` 工具创建（cron 从父技能 config.local.json 的 `schedule.cron` 读取）
 11. **输出初始化完成摘要**
 
 #### 定时任务调度行为（★ v3.1 静默规则）
@@ -303,8 +299,9 @@ AI 会按 11 步流程自动完成：
 | `config.local.json` | 真实配置文件 | ❌ 不提交（.gitignore 排除） |
 
 - **唯一入口**：`config.local.json`（★ v5.5.0 起不再支持环境变量，降低复杂性）
-- **父技能配置文件**：`{parent_skill_dir}/config.local.json`
-- **子技能配置文件**：`{child_skill_dir}/config.local.json`（父技能初始化时自动同步）
+- **★ 信息收集入口**（v3.2.3/v5.5.4 起）：统一由子技能 `collect-user-info.py` 代理（standalone 模式独立收集，proxy 模式被父技能调用写入父技能 config）
+- **父技能配置文件**：`{parent_skill_dir}/config.local.json`（由子技能 `collect-user-info.py --mode proxy` 写入）
+- **子技能配置文件**：`{child_skill_dir}/config.local.json`（父技能初始化步骤 7 父→子复制同步）
 
 ### 创建配置文件
 
@@ -403,7 +400,7 @@ python "<skill_dir>\scripts\check-and-install.py" --fix-config
 
 | 字段 | 含义 | 目录类型 | 默认值 |
 |------|------|---------|--------|
-| `paths.output_dir` | 报告输出根目录 | **输出目录**（用户工作空间） | `<工作根目录>/Output/earnings-reports`（需用户填写） |
+| `paths.output_dir` | 报告输出根目录 | **输出目录**（用户工作空间） | `<工作根目录>/Output/stock-financial-reports`（需用户填写） |
 | `paths.repo_dir` | git 仓库根目录 | **输出目录**（用户工作空间） | 同 `paths.output_dir`（需为 git 仓库根目录） |
 
 > **★ 关键规则**：输出/仓库目录**不从技能安装路径推断**，必须由用户显式填写。

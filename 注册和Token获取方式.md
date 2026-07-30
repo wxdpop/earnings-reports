@@ -352,7 +352,7 @@ gh auth status
 git clone https://github.com/{your-username}/earnings-reports.git D:\TraeAutomaticTools\Output\earnings-reports-git
 ```
 
-> **★ 提示**：克隆路径即父技能初始化弹窗 0 中询问的「工作根目录」下的 `Output/earnings-reports` 子目录。
+> **★ 提示**：克隆路径即父技能初始化弹窗 0 中询问的「工作根目录」下的 `Output/stock-financial-reports` 子目录。
 
 ---
 
@@ -376,8 +376,8 @@ git clone https://github.com/{your-username}/earnings-reports.git D:\TraeAutomat
     "api_key": "你的16位Alpha Vantage API Key"
   },
   "paths": {
-    "output_dir": "D:/你的工作根目录/Output/earnings-reports",
-    "repo_dir": "D:/你的工作根目录/Output/earnings-reports"
+    "output_dir": "D:/你的工作根目录/Output/stock-financial-reports",
+    "repo_dir": "D:/你的工作根目录/Output/stock-financial-reports"
   },
   "deployment": {
     "targets": ["cloudflare"],

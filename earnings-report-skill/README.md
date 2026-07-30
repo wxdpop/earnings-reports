@@ -34,6 +34,8 @@
     ↓
 阶段 -1：环境检查（首次/变更时）→ check-and-install.py
     ↓
+阶段 -1.5：★ 用户信息收集（v5.5.4 新增）→ collect-user-info.py
+    ↓
 阶段 0：解析输入（公司名/季度/本位币）
     ↓
 阶段 1：数据拉取（★ 并行）
@@ -214,6 +216,30 @@ cp "<skill_dir>/config.example.json" "<skill_dir>/config.local.json"
 python "<skill_dir>/scripts/check-and-install.py" --fix-config
 ```
 
+### ★ 信息收集流程（v5.5.4 新增）
+
+除了手动编辑 config.local.json，还可通过 `collect-user-info.py` 引导收集配置：
+
+```bash
+# standalone 模式（子技能独立使用，两阶段调用协议）
+# 阶段 A：输出弹窗规范 JSON
+python "<skill_dir>/scripts/collect-user-info.py" --mode standalone
+
+# 阶段 B：LLM 执行弹窗后回传答案，写入 config.local.json
+python "<skill_dir>/scripts/collect-user-info.py" --mode standalone --answers /path/to/answers.json
+
+# 仅检测占位符和登录状态
+python "<skill_dir>/scripts/collect-user-info.py" --mode standalone --check-only
+```
+
+**两种调用模式**：
+- `standalone`：子技能独立使用，写入子技能自身 config.local.json
+- `proxy`：被父技能初始化时代理调用，写入父技能 config.local.json
+
+**6 项收集项**：工作根目录 / 调度间隔 / API Key 状态 / 飞书 Webhook / 公司库导入方案 / 部署方案
+
+详细规范见 [info-collect-spec.md](references/info-collect-spec.md)
+
 ### config.local.json 配置示例（子技能）
 
 ```json
@@ -240,7 +266,7 @@ python "<skill_dir>/scripts/check-and-install.py" --fix-config
 
 | 字段 | 含义 | 目录类型 | 默认值 |
 |------|------|---------|--------|
-| `paths.output_dir` | 报告输出根目录 | **输出目录**（用户工作空间） | `<工作根目录>/Output/earnings-reports`（需用户填写） |
+| `paths.output_dir` | 报告输出根目录 | **输出目录**（用户工作空间） | `<工作根目录>/Output/stock-financial-reports`（需用户填写） |
 | `paths.repo_dir` | git 仓库根目录 | **输出目录**（用户工作空间） | 同 `paths.output_dir`（需为 git 仓库根目录） |
 
 > **★ 关键规则**：输出/仓库目录**不从技能安装路径推断**，必须由用户显式填写。
@@ -272,6 +298,12 @@ python "<skill_dir>/scripts/check-and-install.py"
 | `feishu.webhook_url` | 飞书群推送 | 必选（可跳过） | 飞书群 → 群机器人 → 添加自定义机器人 |
 | `paths.output_dir` | 报告输出目录 | 必选 | 用户工作空间路径 |
 | `paths.repo_dir` | git 仓库目录 | 必选 | 同 `paths.output_dir` |
+| `deployment.targets` | 部署方案（`["cloudflare"]` 或 `["cloudflare","github"]`） | 必选 | collect-user-info.py 弹窗 5 收集 |
+| `deployment.cloudflare.api_token` | Cloudflare Pages 部署 | 必选 | [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens) |
+| `deployment.cloudflare.account_id` | Cloudflare 账户标识 | 必选 | Cloudflare Dashboard 右侧栏 |
+| `deployment.cloudflare.project_name` | Cloudflare Pages 项目名 | 必选 | 固定 `earnings-reports` |
+| `deployment.github.enabled` | GitHub 部署开关 | 可选 | targets 含 github 时 true |
+| `deployment.github.repo` | GitHub 仓库地址 | 可选 | `用户名/仓库名` |
 
 ---
 
@@ -304,7 +336,7 @@ earnings-report-skill/
 ### 生成的报告目录结构（在用户工作空间的 git 仓库下，非 skill 目录）
 
 ```
-<工作根目录>/Output/earnings-reports/    # ★ v5.5.3 用户工作空间
+<工作根目录>/Output/stock-financial-reports/    # ★ v5.5.3 用户工作空间
 ├── reports/{TICKER}/                  # 最终 HTML 统一存放点（按公司股票代码大写分文件夹）
 │   └── {company-slug}-{quarter}-earnings.html
 └── data/{symbol}-{quarter}/           # API 数据（供调试，阶段 7 自动清理）

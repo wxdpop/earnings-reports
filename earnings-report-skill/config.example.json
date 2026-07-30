@@ -1,6 +1,7 @@
 {
   "_comment": "敏感信息配置文件模板 - 请复制为 config.local.json 并填入真实值",
   "_usage": "复制本文件为同目录下的 config.local.json，然后替换 <your-xxx> 占位符为真实值",
+  "_collect_rule": "★ v5.5.4 信息收集由 collect-user-info.py 代理（standalone 模式独立收集，proxy 模式被父技能调用）",
   "feishu": {
     "_comment": "飞书群机器人 Webhook URL",
     "webhook_url": "<your-feishu-webhook-url>"
@@ -14,14 +15,14 @@
     "api_key": "<your-alphavantage-api-key>"
   },
   "paths": {
-    "_comment": "★ v5.5.3 输出目录配置（用户工作空间，与技能安装目录无关）- 留空时由父技能初始化填写为 <工作根目录>/Output/earnings-reports",
+    "_comment": "★ v5.5.3 输出目录配置（用户工作空间，与技能安装目录无关）- 留空时由父技能初始化填写为 <工作根目录>/Output/stock-financial-reports",
     "_rule": "输出目录不从技能安装路径推断；留空时脚本抛错提示用户配置",
     "output_dir": "",
     "repo_dir": ""
   },
   "deployment": {
     "_comment": "★ 部署配置 - Cloudflare 始终必选（不可关闭）；GitHub 可选（默认不启用，含 github 时需登录）",
-    "targets": ["cloudflare","github"],
+    "targets": ["cloudflare"],
     "cloudflare": {
       "api_token": "<your-cloudflare-api-token>",
       "account_id": "<your-cloudflare-account-id>",

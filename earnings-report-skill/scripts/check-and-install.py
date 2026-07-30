@@ -717,10 +717,17 @@ def check_config():
         return FAIL, '配置文件和模板都不存在', ''
     try:
         content = CONFIG_FILE.read_text(encoding='utf-8')
-        placeholders = ['<your-feishu-webhook-url>', '<your-finnhub-api-key>', '<your-alphavantage-api-key>']
+        # ★ v5.5.4 占位符检测扩展为 5 项（补齐 cloudflare 2 项）
+        placeholders = [
+            '<your-feishu-webhook-url>',
+            '<your-finnhub-api-key>',
+            '<your-alphavantage-api-key>',
+            '<your-cloudflare-api-token>',
+            '<your-cloudflare-account-id>',
+        ]
         unreplaced = [p for p in placeholders if p in content]
         if unreplaced:
-            return WARN, f'含未替换占位符: {", ".join(unreplaced)}', 'config_edit'
+            return WARN, f'含未替换占位符: {", ".join(unreplaced)}（可执行 collect-user-info.py 引导收集）', 'config_edit'
         return PASS, '配置文件存在且占位符已替换', ''
     except Exception as e:
         return FAIL, f'读取失败: {e}', ''
@@ -740,7 +747,7 @@ def check_git_repo():
     if not git_repo:
         return FAIL, (
             'paths.repo_dir 未配置。请在 config.local.json 的 paths.repo_dir 填写 git 仓库根目录'
-            '（如 d:/TraeAutomaticTools/Output/earnings-reports）。'
+            '（如 d:/TraeAutomaticTools/Output/stock-financial-reports）。'
             '★ 输出目录与配置文件目录是不同概念：配置文件在技能安装目录，输出目录在用户工作空间。'
         ), ''
 

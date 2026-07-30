@@ -112,7 +112,7 @@ def resolve_output_dir(arg_out_dir, config):
     # ★ v5.5.3：输出目录不在技能安装路径推断，必须由用户在 config.local.json 显式配置
     raise RuntimeError(
         "paths.output_dir 未配置。请在 config.local.json 的 paths.output_dir 填写输出根目录"
-        "（如 d:/TraeAutomaticTools/Output/earnings-reports），或通过 --out-dir 参数传入。"
+        "（如 d:/TraeAutomaticTools/Output/stock-financial-reports），或通过 --out-dir 参数传入。"
     )
 
 

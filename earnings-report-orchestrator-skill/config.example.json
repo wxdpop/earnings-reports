@@ -1,6 +1,7 @@
 {
   "_comment": "父技能配置模板 - 请复制为 config.local.json 并填入真实值",
   "_usage": "复制本文件为同目录下的 config.local.json，然后替换 <your-xxx> 占位符为真实值。结构与子技能 config.local.json 一致（嵌套），便于同步复制",
+  "_collect_rule": "★ v3.2.3 信息收集由子技能 collect-user-info.py 代理（proxy 模式直接写入本文件，standalone 模式写子技能 config）",
   "_path_rule": "★ v3.2 路径动态化：child_skill_dir/parent_skill_dir 留空时，初始化时根据当前技能实际安装路径自动推断（推荐留空）；paths.output_dir/paths.repo_dir 留空时使用平台默认值",
   "_py_rule": "★ v3.2.2 python_executable 留空时，初始化阶段 3 探测 agent 内置 Python 优先填充（避开 Windows Store stub），后续调用直接读取此字段",
   "child_skill_dir": "",
@@ -19,7 +20,7 @@
     "api_key": "<your-alphavantage-api-key>"
   },
   "paths": {
-    "_comment": "★ v3.2.1 输出目录配置（用户工作空间，与技能安装目录无关）- 留空时由初始化弹窗0询问工作根目录后填写为 <工作根目录>/Output/earnings-reports",
+    "_comment": "★ v3.2.1 输出目录配置（用户工作空间，与技能安装目录无关）- 留空时由初始化弹窗0询问工作根目录后填写为 <工作根目录>/Output/stock-financial-reports",
     "_rule": "输出目录不从技能安装路径推断；留空时脚本抛错提示用户配置",
     "output_dir": "",
     "repo_dir": ""

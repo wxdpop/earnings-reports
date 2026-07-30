@@ -1,0 +1,478 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+collect-user-info.py — 用户信息收集主入口（★ v5.5.4 新增）
+
+将原本散落在父技能 SKILL.md 步骤 2/6/6.5 的信息收集逻辑下沉到子技能侧，
+由子技能统一承载，父技能和子技能均可代理调用此收集流程。
+
+## 调用模式
+
+### standalone 模式（子技能独立使用）
+    python collect-user-info.py --mode standalone
+
+### proxy 模式（被父技能调用代理收集）
+    python collect-user-info.py --mode proxy --parent-config <父技能 config.local.json 路径>
+
+## 两阶段调用协议
+
+阶段 A（无 --answers 参数）：
+    脚本输出 6 项弹窗规范 JSON 到 stdout，LLM 按规范执行 AskUserQuestion，
+    将答案组装为 answers.json 文件。
+
+阶段 B（带 --answers <path> 参数）：
+    脚本读取 answers.json，写入 config.local.json（standalone 写子技能；proxy 写父技能），
+    输出最终状态 JSON 到 stdout，供父技能后续步骤消费。
+
+## 退出码
+    0 = 成功
+    1 = 失败（参数错误/文件读写错误/答案格式错误）
+"""
+
+import argparse
+import json
+import os
+import platform
+import subprocess
+import sys
+from pathlib import Path
+
+# ===== 路径常量 =====
+SKILL_ROOT = Path(__file__).resolve().parent.parent  # earnings-report-skill/
+CHILD_CONFIG = SKILL_ROOT / 'config.local.json'
+CHILD_EXAMPLE = SKILL_ROOT / 'config.example.json'
+
+# ===== 占位符检测清单（5 项，★ v5.5.4 补齐 cloudflare 2 项） =====
+PLACEHOLDERS = [
+    ('feishu.webhook_url', '<your-feishu-webhook-url>'),
+    ('finnhub.api_key', '<your-finnhub-api-key>'),
+    ('alphavantage.api_key', '<your-alphavantage-api-key>'),
+    ('deployment.cloudflare.api_token', '<your-cloudflare-api-token>'),
+    ('deployment.cloudflare.account_id', '<your-cloudflare-account-id>'),
+]
+
+# ===== 公司库预设方案 =====
+COMPANY_PRESETS = {
+    'mag7': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA'],
+    'mag7_baba': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'BABA'],
+    'china': ['BABA', 'PDD', 'JD', 'BIDU', 'NIO', 'LI', 'XPEV'],
+}
+
+
+def log(msg, level='INFO'):
+    """日志输出到 stderr（不污染 stdout 的 JSON 契约）"""
+    print(f'[{level}] {msg}', file=sys.stderr)
+
+
+def load_config(config_path):
+    """加载 config.local.json，不存在返回空 dict"""
+    p = Path(config_path)
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding='utf-8'))
+    except Exception as e:
+        log(f'读取配置失败 {config_path}: {e}', 'ERROR')
+        return {}
+
+
+def save_config(config_path, config):
+    """保存 config.local.json（UTF-8 无 BOM，2 空格缩进）"""
+    p = Path(config_path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(config, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+    log(f'已写入配置: {config_path}')
+
+
+def detect_placeholders(config):
+    """检测 config 中未替换的占位符（5 项）"""
+    remaining = []
+    # 检测嵌套字段的占位符
+    def get_nested(d, path):
+        keys = path.split('.')
+        cur = d
+        for k in keys:
+            if not isinstance(cur, dict) or k not in cur:
+                return None
+            cur = cur[k]
+        return cur
+
+    for field_path, placeholder in PLACEHOLDERS:
+        val = get_nested(config, field_path)
+        if isinstance(val, str) and placeholder in val:
+            remaining.append(placeholder)
+    return remaining
+
+
+def check_gh_auth_status():
+    """检测 gh CLI 登录状态（不执行登录，仅检查）"""
+    try:
+        result = subprocess.run(
+            ['gh', 'auth', 'status'],
+            capture_output=True, text=True, timeout=10
+        )
+        # gh auth status 成功时退出码为 0
+        return 'logged_in' if result.returncode == 0 else 'not_logged_in'
+    except FileNotFoundError:
+        return 'gh_not_installed'
+    except subprocess.TimeoutExpired:
+        return 'check_timeout'
+    except Exception:
+        return 'check_failed'
+
+
+def build_dialogs_spec(mode):
+    """阶段 A：构建 6 项弹窗规范 JSON"""
+    return {
+        'status': 'collect_required',
+        'mode': mode,
+        'dialogs': [
+            {
+                'dialog_id': 'dialog_0_workroot',
+                'collect_item': '工作根目录（输出目录定位）',
+                'field_mapping': ['paths.output_dir', 'paths.repo_dir'],
+                'description': '用于填写 config.local.json 的 paths.output_dir 和 paths.repo_dir，与技能安装目录无关',
+                'options': [
+                    {'label': '使用当前工作目录（推荐）', 'value': '__cwd__', 'hint': '自动获取当前工作目录作为工作根目录'},
+                    {'label': '手动输入工作根目录', 'value': '__user_input__', 'hint': '用户打字输入绝对路径，如 d:\\TraeAutomaticTools 或 ~/projects'}
+                ],
+                'value_transform': '若选 __cwd__，output_dir = <cwd>/Output/stock-financial-reports，repo_dir 同 output_dir；若选 __user_input__，output_dir = <用户输入>/Output/stock-financial-reports，repo_dir 同 output_dir'
+            },
+            {
+                'dialog_id': 'dialog_1_schedule',
+                'collect_item': '调度间隔选择',
+                'field_mapping': ['schedule.cron'],
+                'options': [
+                    {'label': '每 12 小时（推荐）', 'value': '0 0,12 * * *'},
+                    {'label': '每 6 小时', 'value': '0 0,6,12,18 * * *'},
+                    {'label': '每 24 小时', 'value': '0 0 * * *'},
+                    {'label': '每 10 分钟（最小粒度）', 'value': '*/10 * * * *'}
+                ]
+            },
+            {
+                'dialog_id': 'dialog_2_api_key',
+                'collect_item': 'API Key 状态',
+                'field_mapping': ['finnhub.api_key', 'alphavantage.api_key'],
+                'options': [
+                    {'label': '已有 Finnhub + Alpha Vantage API Key', 'value': 'have_both'},
+                    {'label': '需注册 Finnhub API Key', 'value': 'need_finnhub', 'hint': 'https://finnhub.io/register'},
+                    {'label': '需注册 Alpha Vantage API Key', 'value': 'need_alphavantage', 'hint': 'https://www.alphavantage.support/free-api-key'},
+                    {'label': '需注册两个 API Key', 'value': 'need_both', 'hint': 'https://finnhub.io/register 和 https://www.alphavantage.support/free-api-key'}
+                ]
+            },
+            {
+                'dialog_id': 'dialog_3_feishu',
+                'collect_item': '飞书 Webhook 状态',
+                'field_mapping': ['feishu.webhook_url'],
+                'options': [
+                    {'label': '已有飞书 Webhook URL', 'value': 'have_webhook'},
+                    {'label': '需配置飞书群机器人', 'value': 'need_config', 'hint': '飞书群 → 设置 → 群机器人 → 添加自定义机器人'},
+                    {'label': '跳过飞书推送', 'value': 'skip', 'hint': '不配置 Webhook，子技能阶段 9 飞书推送将被跳过'}
+                ]
+            },
+            {
+                'dialog_id': 'dialog_4_company_library',
+                'collect_item': '公司库导入方案',
+                'field_mapping': ['__company_library_choice__'],
+                'options': [
+                    {'label': '导入美股 7 巨头（推荐）', 'value': 'mag7', 'tickers': COMPANY_PRESETS['mag7']},
+                    {'label': '美股 7 巨头 + 阿里巴巴', 'value': 'mag7_baba', 'tickers': COMPANY_PRESETS['mag7_baba']},
+                    {'label': '中概股龙头', 'value': 'china', 'tickers': COMPANY_PRESETS['china']},
+                    {'label': '手动输入 ticker 列表', 'value': 'custom', 'hint': '用户打字输入，如 "NVDA, TSLA, AMD"'},
+                    {'label': '跳过，稍后手动添加', 'value': 'skip', 'tickers': []}
+                ]
+            },
+            {
+                'dialog_id': 'dialog_5_deployment',
+                'collect_item': '部署方案选择',
+                'field_mapping': ['deployment.targets', 'deployment.github.enabled'],
+                'options': [
+                    {'label': '仅 Cloudflare Pages（推荐默认）', 'value': 'cloudflare_only', 'targets': ['cloudflare'], 'github_enabled': False},
+                    {'label': 'Cloudflare + GitHub 双节点', 'value': 'cloudflare_github', 'targets': ['cloudflare', 'github'], 'github_enabled': True}
+                ],
+                'constraint': 'Cloudflare 始终必选（不可关闭）；GitHub 为可选项，默认不启用'
+            }
+        ]
+    }
+
+
+def apply_answers(config, answers, mode):
+    """阶段 B：将用户答案应用到 config 字典"""
+    # 弹窗 0：工作根目录
+    ans0 = answers.get('dialog_0_workroot', {})
+    choice0 = ans0.get('choice', '')
+    if choice0 == '__cwd__':
+        workroot = str(Path.cwd())
+    elif choice0 == '__user_input__':
+        workroot = ans0.get('user_input', str(Path.cwd()))
+    else:
+        workroot = choice0 or str(Path.cwd())
+
+    output_dir = str(Path(workroot) / 'Output' / 'stock-financial-reports')
+    config.setdefault('paths', {})
+    config['paths']['output_dir'] = output_dir
+    config['paths']['repo_dir'] = output_dir
+
+    # 弹窗 1：调度间隔（仅 proxy 模式写入 schedule，因为 schedule 是父技能专有字段）
+    if mode == 'proxy':
+        ans1 = answers.get('dialog_1_schedule', {})
+        cron = ans1.get('choice', '0 0,12 * * *')
+        config.setdefault('schedule', {})
+        config['schedule']['enabled'] = True
+        config['schedule']['cron'] = cron
+        config['schedule']['timezone'] = 'Asia/Shanghai'
+
+    # 弹窗 2：API Key（不在此处填入真实值，仅标记后续需引导编辑）
+    # 真实 API Key 由用户手动编辑 config.local.json 填入
+    ans2 = answers.get('dialog_2_api_key', {})
+    choice2 = ans2.get('choice', '')
+    if 'finnhub' not in config or config.get('finnhub', {}).get('api_key', '') in ('', '<your-finnhub-api-key>'):
+        config.setdefault('finnhub', {})
+        if config['finnhub'].get('api_key', '') == '':
+            config['finnhub']['api_key'] = '<your-finnhub-api-key>'
+    if 'alphavantage' not in config or config.get('alphavantage', {}).get('api_key', '') in ('', '<your-alphavantage-api-key>'):
+        config.setdefault('alphavantage', {})
+        if config['alphavantage'].get('api_key', '') == '':
+            config['alphavantage']['api_key'] = '<your-alphavantage-api-key>'
+
+    # 弹窗 3：飞书 Webhook
+    ans3 = answers.get('dialog_3_feishu', {})
+    choice3 = ans3.get('choice', '')
+    if choice3 != 'skip':
+        config.setdefault('feishu', {})
+        if config['feishu'].get('webhook_url', '') == '':
+            config['feishu']['webhook_url'] = '<your-feishu-webhook-url>'
+
+    # 弹窗 4：公司库导入方案（不写入 config，仅记录选择，供父技能步骤 8 消费）
+    ans4 = answers.get('dialog_4_company_library', {})
+    choice4 = ans4.get('choice', 'skip')
+    # 自定义 ticker 列表
+    if choice4 == 'custom':
+        custom_tickers = ans4.get('user_input', '')
+        # 解析 "NVDA, TSLA, AMD" 为列表
+        company_library_tickers = [t.strip().upper() for t in custom_tickers.split(',') if t.strip()]
+    else:
+        company_library_tickers = COMPANY_PRESETS.get(choice4, [])
+
+    # 弹窗 5：部署方案
+    ans5 = answers.get('dialog_5_deployment', {})
+    choice5 = ans5.get('choice', 'cloudflare_only')
+    if choice5 == 'cloudflare_github':
+        targets = ['cloudflare', 'github']
+        github_enabled = True
+    else:
+        targets = ['cloudflare']
+        github_enabled = False
+
+    config.setdefault('deployment', {})
+    config['deployment']['targets'] = targets
+    config['deployment'].setdefault('cloudflare', {})
+    if config['deployment']['cloudflare'].get('api_token', '') == '':
+        config['deployment']['cloudflare']['api_token'] = '<your-cloudflare-api-token>'
+    if config['deployment']['cloudflare'].get('account_id', '') == '':
+        config['deployment']['cloudflare']['account_id'] = '<your-cloudflare-account-id>'
+    config['deployment']['cloudflare']['project_name'] = config['deployment']['cloudflare'].get('project_name', 'earnings-reports')
+    config['deployment'].setdefault('github', {})
+    config['deployment']['github']['enabled'] = github_enabled
+    config['deployment']['github']['repo'] = config['deployment']['github'].get('repo', '')
+
+    return {
+        'company_library_choice': choice4,
+        'company_library_tickers': company_library_tickers,
+        'schedule_cron': config.get('schedule', {}).get('cron', ''),
+        'schedule_timezone': config.get('schedule', {}).get('timezone', 'Asia/Shanghai'),
+        'deployment_targets': targets,
+    }
+
+
+def build_final_status(config, mode, collected_meta):
+    """阶段 B：构建最终状态 JSON"""
+    placeholders = detect_placeholders(config)
+    targets = config.get('deployment', {}).get('targets', [])
+    github_required = 'github' in targets
+    gh_status = check_gh_auth_status() if github_required else 'not_required'
+
+    # 判断 cloudflare 是否已配置（无占位符）
+    cf = config.get('deployment', {}).get('cloudflare', {})
+    cloudflare_configured = (
+        cf.get('api_token', '') not in ('', '<your-cloudflare-api-token>') and
+        cf.get('account_id', '') not in ('', '<your-cloudflare-account-id>')
+    )
+
+    # 构建 next_actions
+    next_actions = []
+    for ph in placeholders:
+        if 'finnhub' in ph:
+            next_actions.append({'action': 'edit_config', 'fields': ['finnhub.api_key'], 'hint': 'https://finnhub.io/register'})
+        elif 'alphavantage' in ph:
+            next_actions.append({'action': 'edit_config', 'fields': ['alphavantage.api_key'], 'hint': 'https://www.alphavantage.support/free-api-key'})
+        elif 'feishu' in ph:
+            next_actions.append({'action': 'edit_config', 'fields': ['feishu.webhook_url'], 'hint': '飞书群 → 设置 → 群机器人 → 添加自定义机器人'})
+        elif 'cloudflare-api-token' in ph:
+            next_actions.append({'action': 'edit_config', 'fields': ['deployment.cloudflare.api_token'], 'hint': 'https://dash.cloudflare.com/profile/api-tokens'})
+        elif 'cloudflare-account-id' in ph:
+            next_actions.append({'action': 'edit_config', 'fields': ['deployment.cloudflare.account_id'], 'hint': 'Cloudflare Dashboard 右侧栏'})
+
+    if github_required and gh_status == 'not_logged_in':
+        next_actions.append({'action': 'gh_auth_login', 'reason': 'deployment.targets 含 github 且 gh auth status 未登录'})
+    elif github_required and gh_status == 'gh_not_installed':
+        next_actions.append({'action': 'install_gh', 'reason': 'deployment.targets 含 github 但 gh CLI 未安装'})
+
+    # 状态判定
+    if not placeholders and (not github_required or gh_status == 'logged_in'):
+        status = 'ok'
+    elif placeholders:
+        status = 'warn'
+    else:
+        status = 'warn'
+
+    return {
+        'status': status,
+        'mode': mode,
+        'collected_fields': collected_meta.get('collected_fields', []),
+        'company_library_choice': collected_meta.get('company_library_choice', 'skip'),
+        'company_library_tickers': collected_meta.get('company_library_tickers', []),
+        'schedule_cron': collected_meta.get('schedule_cron', ''),
+        'schedule_timezone': collected_meta.get('schedule_timezone', 'Asia/Shanghai'),
+        'placeholders_remaining': placeholders,
+        'cloudflare_configured': cloudflare_configured,
+        'github_login_required': github_required,
+        'github_login_status': gh_status,
+        'next_actions': next_actions,
+    }
+
+
+def ensure_config_exists(config_path):
+    """若 config.local.json 不存在，从 config.example.json 复制模板"""
+    p = Path(config_path)
+    if p.exists():
+        return True
+    # 查找同目录下的 config.example.json
+    example = p.parent / 'config.example.json'
+    if not example.exists():
+        # 子技能默认模板
+        example = CHILD_EXAMPLE
+    if not example.exists():
+        log(f'模板文件不存在: {example}', 'ERROR')
+        return False
+    try:
+        import shutil
+        shutil.copy2(example, p)
+        log(f'已从模板创建: {p}')
+        return True
+    except Exception as e:
+        log(f'创建配置文件失败: {e}', 'ERROR')
+        return False
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='用户信息收集主入口（collect-user-info.py）',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+调用示例：
+  # 阶段 A（输出弹窗规范 JSON）
+  python collect-user-info.py --mode standalone
+  python collect-user-info.py --mode proxy --parent-config /path/to/parent/config.local.json
+
+  # 阶段 B（应用答案并输出最终状态 JSON）
+  python collect-user-info.py --mode standalone --answers /path/to/answers.json
+  python collect-user-info.py --mode proxy --parent-config /path/to/parent/config.local.json --answers /path/to/answers.json
+
+  # 仅检测占位符
+  python collect-user-info.py --mode standalone --check-only
+"""
+    )
+    parser.add_argument('--mode', choices=['standalone', 'proxy'], required=True,
+                        help='收集模式：standalone=子技能独立使用；proxy=被父技能调用代理收集')
+    parser.add_argument('--parent-config', default='',
+                        help='父技能 config.local.json 路径（proxy 模式必填）')
+    parser.add_argument('--child-config', default=str(CHILD_CONFIG),
+                        help=f'子技能 config.local.json 路径（默认 {CHILD_CONFIG}）')
+    parser.add_argument('--answers', default='',
+                        help='LLM 执行弹窗后回传的答案 JSON 路径（阶段 B 必填）')
+    parser.add_argument('--check-only', action='store_true',
+                        help='仅检测占位符和登录状态，不执行收集')
+
+    args = parser.parse_args()
+
+    # 参数校验
+    if args.mode == 'proxy' and not args.parent_config:
+        log('proxy 模式必须指定 --parent-config 参数', 'ERROR')
+        return 1
+
+    if args.check_only:
+        # 仅检测模式：读取配置并输出检测结果
+        target_config = args.parent_config if args.mode == 'proxy' else args.child_config
+        if not Path(target_config).exists():
+            print(json.dumps({
+                'status': 'error',
+                'message': f'配置文件不存在: {target_config}',
+                'placeholders_remaining': [p[1] for p in PLACEHOLDERS],
+            }, ensure_ascii=False, indent=2))
+            return 1
+        config = load_config(target_config)
+        placeholders = detect_placeholders(config)
+        targets = config.get('deployment', {}).get('targets', [])
+        github_required = 'github' in targets
+        gh_status = check_gh_auth_status() if github_required else 'not_required'
+        print(json.dumps({
+            'status': 'warn' if placeholders else 'ok',
+            'mode': args.mode,
+            'placeholders_remaining': placeholders,
+            'github_login_required': github_required,
+            'github_login_status': gh_status,
+        }, ensure_ascii=False, indent=2))
+        return 0
+
+    if not args.answers:
+        # 阶段 A：输出弹窗规范 JSON
+        spec = build_dialogs_spec(args.mode)
+        print(json.dumps(spec, ensure_ascii=False, indent=2))
+        return 0
+
+    # 阶段 B：读取答案并应用
+    answers_path = Path(args.answers)
+    if not answers_path.exists():
+        log(f'答案文件不存在: {answers_path}', 'ERROR')
+        return 1
+    try:
+        answers = json.loads(answers_path.read_text(encoding='utf-8'))
+    except Exception as e:
+        log(f'解析答案文件失败: {e}', 'ERROR')
+        return 1
+
+    # 确定目标配置文件路径
+    if args.mode == 'proxy':
+        target_config = args.parent_config
+    else:
+        target_config = args.child_config
+
+    # 确保配置文件存在
+    if not ensure_config_exists(target_config):
+        return 1
+
+    # 加载现有配置
+    config = load_config(target_config)
+
+    # 应用答案
+    collected_meta = apply_answers(config, answers, args.mode)
+    collected_meta['collected_fields'] = [
+        'paths.output_dir', 'paths.repo_dir',
+        'finnhub.api_key', 'alphavantage.api_key', 'feishu.webhook_url',
+        'deployment.targets', 'deployment.github.enabled'
+    ]
+    if args.mode == 'proxy':
+        collected_meta['collected_fields'].extend(['schedule.cron', 'schedule.timezone'])
+
+    # 保存配置
+    save_config(target_config, config)
+
+    # 输出最终状态 JSON
+    final_status = build_final_status(config, args.mode, collected_meta)
+    print(json.dumps(final_status, ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
