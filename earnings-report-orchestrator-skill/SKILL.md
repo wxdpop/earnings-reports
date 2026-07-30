@@ -408,6 +408,11 @@ MAGNIFICENT_7 = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA"]
 
 **已存在公司处理**：ticker 已存在 → 跳过不覆盖，输出 `skipped` 列表。
 
+**★ 增量添加不覆盖原有公司库**：
+- 初始化时若 `company-library.json` 已存在（含用户手动添加的公司），`import-presets` 只在原有基础上增加新公司，**不覆盖整个文件**
+- 代码实现：`action_add` 和 `action_import_presets` 通过 `find_company(lib, ticker)` 检查，已存在的 ticker 直接 `skipped`，不重复添加、不修改原有字段
+- 顶部 4 字段（`version` / `timezone` / `timezone_note` / `last_updated`）由 `load_library()` 和 `save_library()` 自动保证完整性（旧文件缺失时自动补填）
+
 #### 步骤 9：写入父技能初始化标记（标记值从步骤 2 输出 JSON 读取）
 
 ```json

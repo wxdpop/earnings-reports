@@ -135,15 +135,34 @@ def now_iso() -> str:
 
 
 def load_library() -> dict:
-    """加载公司库 JSON"""
+    """加载公司库 JSON（文件不存在时返回含顶部 4 字段的默认结构）"""
     if not LIBRARY_FILE.exists():
-        return {"version": "1.0", "last_updated": "", "companies": []}
+        return {
+            "version": "1.0",
+            "timezone": "Asia/Shanghai (UTC+8)",
+            "timezone_note": "★ 所有日期时间字段（next_earnings_date / next_earnings_time / last_updated / created_at / generated_at）均为北京时间（UTC+8）。入库（add/import-presets）和回写（update-status/backfill-next）操作时，若数据来源为其他时区（如 Finnhub earningsCalendar 返回的 hour/minute 为美东时间 UTC-5/-4），LLM 必须先转换为北京时间再写入。转换规则：美东时间 + 12 小时（夏令时 UTC-4）或 + 13 小时（冬令时 UTC-5）= 北京时间；若跨日，next_earnings_date 也要相应加一天。",
+            "last_updated": "",
+            "companies": []
+        }
     with LIBRARY_FILE.open("r", encoding="utf-8") as f:
-        return json.load(f)
+        lib = json.load(f)
+    # ★ 兼容旧文件：若缺少 timezone/timezone_note 字段，补填保证顶部 4 字段完整
+    if "timezone" not in lib:
+        lib["timezone"] = "Asia/Shanghai (UTC+8)"
+    if "timezone_note" not in lib:
+        lib["timezone_note"] = "★ 所有日期时间字段（next_earnings_date / next_earnings_time / last_updated / created_at / generated_at）均为北京时间（UTC+8）。入库（add/import-presets）和回写（update-status/backfill-next）操作时，若数据来源为其他时区（如 Finnhub earningsCalendar 返回的 hour/minute 为美东时间 UTC-5/-4），LLM 必须先转换为北京时间再写入。转换规则：美东时间 + 12 小时（夏令时 UTC-4）或 + 13 小时（冬令时 UTC-5）= 北京时间；若跨日，next_earnings_date 也要相应加一天。"
+    return lib
 
 
 def save_library(lib: dict) -> None:
-    """保存公司库 JSON"""
+    """保存公司库 JSON（保证顶部 4 字段完整 + 更新 last_updated）"""
+    # ★ 保存前确保顶部 4 字段完整（version/timezone/timezone_note/last_updated）
+    if "version" not in lib:
+        lib["version"] = "1.0"
+    if "timezone" not in lib:
+        lib["timezone"] = "Asia/Shanghai (UTC+8)"
+    if "timezone_note" not in lib:
+        lib["timezone_note"] = "★ 所有日期时间字段（next_earnings_date / next_earnings_time / last_updated / created_at / generated_at）均为北京时间（UTC+8）。入库（add/import-presets）和回写（update-status/backfill-next）操作时，若数据来源为其他时区（如 Finnhub earningsCalendar 返回的 hour/minute 为美东时间 UTC-5/-4），LLM 必须先转换为北京时间再写入。转换规则：美东时间 + 12 小时（夏令时 UTC-4）或 + 13 小时（冬令时 UTC-5）= 北京时间；若跨日，next_earnings_date 也要相应加一天。"
     lib["last_updated"] = now_iso()
     with LIBRARY_FILE.open("w", encoding="utf-8") as f:
         json.dump(lib, f, ensure_ascii=False, indent=2)
