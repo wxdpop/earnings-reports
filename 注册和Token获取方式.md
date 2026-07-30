@@ -416,7 +416,7 @@ git clone https://github.com/{your-username}/earnings-reports.git D:\TraeAutomat
 
 ### 配置加载优先级
 
-1. **config.local.json**（唯一入口，★ v5.5.0 起不再支持环境变量）
+1. **config.local.json**（唯一入口，不再支持环境变量）
 2. 留空时脚本抛错提示用户配置（不再回退到环境变量）
 
 ### 部署方案组合

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-跨平台模板填充脚本（v5.5.0，含结构完整性校验）
+跨平台模板填充脚本（含结构完整性校验）
 
 合并自原 fill-template.ps1 + fill-template.sh，单文件覆盖 Windows/Mac/Linux。
 

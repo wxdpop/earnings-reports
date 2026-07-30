@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-子技能调度器（跨平台 Python 3.8+，v3.2.2 统一 Python 调用）
+子技能调度器（跨平台 Python 3.8+，统一 Python 调用）
 
 功能：
   - 校验父技能初始化标记（.parent-init-done.json）
   - 校验子技能目录存在
-  - ★ v3.0 统一用 python 命令调用子技能脚本（子技能 v5.5.0+ 已统一 Python 单文件，无平台分支）
-  - ★ v3.2.2：解析 Python 绝对路径（agent 内置 > 系统 > sys.executable），避免 Windows Store stub 拦截
+  - 统一用 python 命令调用子技能脚本（子技能已统一 Python 单文件，无平台分支）
+  - 解析 Python 绝对路径（agent 内置 > 系统 > sys.executable），避免 Windows Store stub 拦截
   - 输出子技能脚本调用序列（LLM 按此序列执行子技能 9 阶段工作流）
 
 设计原则：
@@ -81,7 +81,7 @@ def detect_platform() -> str:
 
 
 # ============================================================
-# ★ v3.2.2：Python 可执行文件解析（避免 Windows Store stub 拦截）
+# Python 可执行文件解析（避免 Windows Store stub 拦截）
 # ============================================================
 
 def is_stub_exe(path):
@@ -137,7 +137,7 @@ def find_agent_python():
 
 def resolve_python_executable(cfg: dict, child_skill_dir: Path) -> str:
     """
-    ★ v3.2.2：解析可用的 Python 可执行文件绝对路径
+    解析可用的 Python 可执行文件绝对路径
     优先级：
       1. config.local.json 的 python_executable 字段（初始化时探测并缓存）
       2. 子技能 .env-check-result.{platform}.json 缓存中的 py_executable
@@ -232,7 +232,7 @@ def quarter_to_slug(quarter: str) -> str:
 # ============================================================
 
 def build_dispatch_plan(args) -> dict:
-    """构建子技能调用计划（★ v3.0 统一 Python 调用）"""
+    """构建子技能调用计划（统一 Python 调用）"""
     cfg = load_config()
     marker = check_init_marker()
 
@@ -243,7 +243,7 @@ def build_dispatch_plan(args) -> dict:
 
     output_dir = Path(cfg.get("paths", {}).get("output_dir", ""))
     repo_dir = Path(cfg.get("paths", {}).get("repo_dir", ""))
-    # ★ v3.2.1：输出/仓库目录留空时报错（不从技能安装路径推断）
+    # 输出/仓库目录留空时报错（不从技能安装路径推断）
     if not str(output_dir):
         print(json.dumps({"status": "error", "reason": "paths.output_dir 未配置，请重新执行初始化（输出目录在用户工作空间，不在技能安装目录）"}, ensure_ascii=False))
         sys.exit(1)
@@ -272,7 +272,7 @@ def build_dispatch_plan(args) -> dict:
     filename = f"{company_slug}-{quarter_slug}-earnings.html"
     report_path = f"reports/{ticker}/{filename}"
 
-    # 子技能脚本路径（★ v3.0 统一 Python，无 .ps1/.sh 分支）
+    # 子技能脚本路径（统一 Python，无 .ps1/.sh 分支）
     child_scripts = child_skill_dir / "scripts"
     child_references = child_skill_dir / "references"
 
@@ -285,7 +285,7 @@ def build_dispatch_plan(args) -> dict:
     # 构建中间产物目录
     intermediate_dir = output_dir / f"{company_slug}-{quarter_slug}-earnings"
 
-    # ★ v3.2.2：解析 Python 绝对路径（优先 agent 内置 → 配置缓存 → sys.executable → 系统 PATH）
+    # 解析 Python 绝对路径（优先 agent 内置 → 配置缓存 → sys.executable → 系统 PATH）
     # 避免 Windows Store 0 字节 stub 拦截导致子技能脚本调用失败
     py_bin = resolve_python_executable(cfg, child_skill_dir)
 
@@ -300,7 +300,7 @@ def build_dispatch_plan(args) -> dict:
     plan = {
         "status": "ok",
         "platform": plat,
-        "script_invocation": py_bin,  # ★ v3.2.2：使用解析后的绝对路径（之前硬编码 "python"）
+        "script_invocation": py_bin,  # 使用解析后的绝对路径（之前硬编码 "python"）
         "ticker": ticker,
         "quarter": quarter,
         "company_name": company_name,
@@ -407,13 +407,13 @@ def build_dispatch_plan(args) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="子技能调度器（父技能 earnings-report-orchestrator v3.2.2，统一 Python 调用）",
+        description="子技能调度器（父技能 earnings-report-orchestrator，统一 Python 调用）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 功能：
   校验父技能初始化标记 + 子技能目录，输出子技能脚本调用序列。
-  ★ v3.0 统一用 python 命令调用子技能脚本（子技能 v5.5.0+ 已统一 Python 单文件，无平台分支）。
-  ★ v3.2.2 解析 Python 绝对路径（agent 内置 > 配置缓存 > sys.executable > 系统 PATH），避免 Windows Store stub 拦截。
+  统一用 python 命令调用子技能脚本（子技能已统一 Python 单文件，无平台分支）。
+  解析 Python 绝对路径（agent 内置 > 配置缓存 > sys.executable > 系统 PATH），避免 Windows Store stub 拦截。
   LLM 按序列执行子技能 9 阶段工作流（fetch-data → fill-template → build-standalone → verify-headless → 部署 → 飞书推送）。
 
 示例:

@@ -3,15 +3,17 @@ name: "earnings-report"
 description: "自动生成上市公司最新财报深度分析HTML报告（含数据图表、移动端适配、单文件输出）。当用户要求分析某公司财报/earnings/业绩时调用。"
 ---
 
-# 财报深度分析报告生成器（v5.5.3）
+# 财报深度分析报告生成器
+
+> **★ 版本管理约定**：本技能不记录历史版本信息，始终更新到最新版本。Git 操作固定使用 git CLI。
 
 ## 概述
 
 自动生成上市公司财报深度分析报告。用户提供公司名称（可选指定年份/季度），技能完成数据搜集、整理、HTML生成、校验、单文件构建、部署和推送，输出自包含 HTML。
 
-- **★ 跨平台（v5.5.0 重构）**：所有脚本统一为 Python 3 单文件入口（Windows/Mac/Linux 通用），消除双平台 .ps1/.sh 维护负担；Chrome headless 验证
+- **★ 跨平台**：所有脚本统一为 Python 3 单文件入口（Windows/Mac/Linux 通用），消除双平台 .ps1/.sh 维护负担；Chrome headless 验证
 - **统一存放**：最终 HTML 存放在 git 仓库 `reports/{TICKER}/{company-slug}-{quarter}-earnings.html`，TICKER 为股票代码大写
-- **路径可配置**：通过 `config.local.json` 的 `paths.output_dir` / `paths.repo_dir` 自定义；★ v5.5.3 路径分类规则：配置文件目录基于技能安装目录推断，输出/仓库目录在用户工作空间需显式配置
+- **路径可配置**：通过 `config.local.json` 的 `paths.output_dir` / `paths.repo_dir` 自定义；路径分类规则：配置文件目录基于技能安装目录推断，输出/仓库目录在用户工作空间需显式配置
 
 ## 关键地址与配置
 
@@ -23,9 +25,9 @@ description: "自动生成上市公司最新财报深度分析HTML报告（含�
 | GitHub Pages URL | `https://wxdpop.github.io/earnings-reports/reports/{TICKER}/{filename}.html`（可选备用） | — |
 | Cloudflare Pages 项目名 | `earnings-reports`（必选） | — |
 | Cloudflare Pages URL | `https://earnings-reports.pages.dev/reports/{TICKER}/{filename}.html`（★ 主链接，必选） | — |
-| 本地 git 仓库路径 | ★ v5.5.3 用户工作空间：`config.local.json` 的 `paths.repo_dir`，默认 `<工作根目录>/Output/stock-financial-reports`（需为 git 仓库根目录，**不从技能安装路径推断**）| **输出目录** |
-| 输出目录路径 | ★ v5.5.3 用户工作空间：`config.local.json` 的 `paths.output_dir`，默认 `<工作根目录>/Output/stock-financial-reports`（**不从技能安装路径推断**）| **输出目录** |
-| 配置文件目录 | ★ v5.5.3 技能安装目录：`config.local.json` / `.env-check-result.*.json` 均在技能安装目录（基于 `Path(__file__).resolve().parent.parent` 推断）| **配置文件目录** |
+| 本地 git 仓库路径 | 用户工作空间：`config.local.json` 的 `paths.repo_dir`，默认 `<工作根目录>/Output/stock-financial-reports`（需为 git 仓库根目录，**不从技能安装路径推断**）| **输出目录** |
+| 输出目录路径 | 用户工作空间：`config.local.json` 的 `paths.output_dir`，默认 `<工作根目录>/Output/stock-financial-reports`（**不从技能安装路径推断**）| **输出目录** |
+| 配置文件目录 | 技能安装目录：`config.local.json` / `.env-check-result.*.json` 均在技能安装目录（基于 `Path(__file__).resolve().parent.parent` 推断）| **配置文件目录** |
 
 **API Key 获取地址**：
 
@@ -34,7 +36,7 @@ description: "自动生成上市公司最新财报深度分析HTML报告（含�
 | Finnhub | https://finnhub.io/register | 公司 profile、分析师评级 | `finnhub.api_key` |
 | Alpha Vantage | https://www.alphavantage.support/free-api-key | 三大报表（收入/资产负债/现金流） | `alphavantage.api_key` |
 
-**config.local.json 配置示例**（由 `--fix-config` 自动创建模板，填入真实值后使用；被 .gitignore 排除；★ v5.5.0 修正为与 config.example.json 一致的嵌套结构）：
+**config.local.json 配置示例**（由 `--fix-config` 自动创建模板，填入真实值后使用；被 .gitignore 排除；修正为与 config.example.json 一致的嵌套结构）：
 
 ```json
 {
@@ -54,12 +56,12 @@ description: "自动生成上市公司最新财报深度分析HTML报告（含�
 }
 ```
 
-★ v5.5.3 路径分类规则（区分两类目录）：
+路径分类规则（区分两类目录）：
 - **配置文件目录**（config.local.json / .env-check-result.*.json）：基于技能安装目录推断（`Path(__file__).resolve().parent.parent`），无需用户配置
 - **输出/仓库目录**（paths.output_dir / paths.repo_dir）：在用户工作空间，**不从技能安装路径推断**；留空时脚本抛错提示用户配置
 - `paths.output_dir` / `paths.repo_dir`：默认 `<工作根目录>/Output/stock-financial-reports`，由父技能初始化时填写
 
-**★ 配置统一入口（v5.5.0）**：所有配置项（API Key、Webhook URL、路径）统一从 `config.local.json` 加载，不再支持环境变量，降低复杂性。
+**★ 配置统一入口**：所有配置项（API Key、Webhook URL、路径）统一从 `config.local.json` 加载，不再支持环境变量，降低复杂性。
 
 **飞书 Webhook 配置**：
 - 写入 `config.local.json` 的 `feishu.webhook_url` 字段（嵌套结构），一次配置永久生效
@@ -83,7 +85,7 @@ description: "自动生成上市公司最新财报深度分析HTML报告（含�
 4. **文件操作用 Python pathlib / shutil** — `pathlib.Path` / `shutil.copy2` / `shutil.rmtree` 等，禁止 `os.system` 调用 `Copy-Item` / `cp` 等高风险命令
 5. **无头验证用 Chrome headless** — 跨平台路径自动检测，Chrome 不可用时退化为纯 HTML 结构验证
 6. **阶段7/8/9 并行执行** — 阶段6验证 PASS 后，单条消息并行启动 3 个子代理（Task 工具），等待全部返回
-7. **★ 阶段1 数据拉取并行执行（v5.4.5）** — API 脚本（RunCommand）+ 多站点 WebFetch（N 个 Task 子代理）在单条消息中并行启动，等待全部返回后汇总
+7. **★ 阶段1 数据拉取并行执行** — API 脚本（RunCommand）+ 多站点 WebFetch（N 个 Task 子代理）在单条消息中并行启动，等待全部返回后汇总
 8. **脱敏检查** — 提交前自查（详见"脱敏检查"规范）
 9. **执行完毕清理资源** — 关闭 HTTP 服务器、删除临时文件
 
@@ -93,7 +95,7 @@ description: "自动生成上市公司最新财报深度分析HTML报告（含�
 
 **触发时机**：首次调用、环境变更、用户主动要求"检查环境"。
 
-**执行脚本**（★ v5.5.0 起统一为 Python 单文件入口，Windows/Mac/Linux 通用）：
+**执行脚本**（统一为 Python 单文件入口，Windows/Mac/Linux 通用）：
 
 ```bash
 # 跨平台统一调用（自动选择 python3/python）
@@ -128,18 +130,18 @@ python "{skill_dir}/scripts/check-and-install.py" --force-check # 强制重检�
 - 依赖缺失 → 自动安装（无需确认），安装后重新检查
 - 仅 config 类（API Key 未填）需弹窗提示用户手动编辑
 
-### 阶段 -1.5：用户信息收集（★ v5.5.4 新增）
+### 阶段 -1.5：用户信息收集
 
 **触发时机**：阶段 -1 环境检查通过后，检测到 config.local.json 含未替换占位符或关键字段为空时触发。也可由父技能初始化时代理调用（proxy 模式）。
 
 **执行脚本**：
 
 ```bash
-# standalone 模式（子技能独立使用）
+# standalone 模式（子技能独立使用，不收集调度间隔）
 python "{skill_dir}/scripts/collect-user-info.py" --mode standalone
 python "{skill_dir}/scripts/collect-user-info.py" --mode standalone --answers /path/to/answers.json
 
-# proxy 模式（被父技能调用代理收集）
+# proxy 模式（被父技能调用代理收集，含调度间隔）
 python "{skill_dir}/scripts/collect-user-info.py" --mode proxy --parent-config <父技能 config.local.json 路径>
 python "{skill_dir}/scripts/collect-user-info.py" --mode proxy --parent-config <父技能 config.local.json 路径> --answers /path/to/answers.json
 
@@ -147,47 +149,13 @@ python "{skill_dir}/scripts/collect-user-info.py" --mode proxy --parent-config <
 python "{skill_dir}/scripts/collect-user-info.py" --mode standalone --check-only
 ```
 
-**两阶段调用协议**：
-
-| 阶段 | 触发条件 | 行为 |
-|---|---|---|
-| 阶段 A | 无 `--answers` 参数 | 脚本输出 6 项弹窗规范 JSON 到 stdout，LLM 按规范执行 AskUserQuestion，组装 answers.json |
-| 阶段 B | 带 `--answers <path>` 参数 | 脚本读取答案，写入 config.local.json，输出最终状态 JSON |
-
-**6 项收集项**：
-1. 工作根目录（输出目录定位）→ `paths.output_dir` / `paths.repo_dir`
-2. 调度间隔 → `schedule.cron`（仅 proxy 模式写入父技能 config）
-3. API Key 状态 → `finnhub.api_key` / `alphavantage.api_key`（标记后续引导编辑）
-4. 飞书 Webhook 状态 → `feishu.webhook_url`
-5. 公司库导入方案 → 输出 JSON 的 `company_library_choice` / `company_library_tickers`（不写入 config，供父技能步骤 8 消费）
-6. 部署方案 → `deployment.targets` / `deployment.github.enabled`
-
-**占位符检测（5 项）**：
-- `<your-feishu-webhook-url>` / `<your-finnhub-api-key>` / `<your-alphavantage-api-key>`
-- `<your-cloudflare-api-token>` / `<your-cloudflare-account-id>`（★ 补齐 cloudflare 2 项）
-
-**字段归属规则**：
-
-| 字段 | standalone 写入 | proxy 写入 | 说明 |
-|---|---|---|---|
-| `feishu.*` / `finnhub.*` / `alphavantage.*` / `paths.*` / `deployment.*` | ✓ | ✓ | 两边都保留 |
-| `schedule.*` | ✗ | ✓ | 仅父技能（子技能不需要调度） |
-| `child_skill_dir` / `parent_skill_dir` / `python_executable` | ✗ | ✗ | 由父技能步骤 1/3 自管理 |
-
-**输出 JSON 消费映射**（供父技能后续步骤读取）：
-
-| 输出字段 | 父技能消费步骤 | 用途 |
-|---|---|---|
-| `collected_fields` / `placeholders_remaining` | 步骤 6 | 占位符检测依据 |
-| `company_library_choice` / `company_library_tickers` | 步骤 8 | 公司库导入方案 |
-| `schedule_cron` / `schedule_timezone` | 步骤 10 | 创建定时任务 |
-| `cloudflare_configured` | 步骤 9 | 写入 `.parent-init-done.json` 标记 |
-| `github_login_required` / `github_login_status` | 步骤 6.5/9 | GitHub 登录引导 + 标记写入 |
-
-**约束**：
-- 脚本不直接调用 AskUserQuestion（Trae 专有能力），通过两阶段调用协议实现跨 Agent 兼容
-- `gh auth login` / `wrangler login` 是系统级交互操作，脚本仅检测状态（`gh auth status` / `wrangler whoami`），实际登录由 LLM 执行
-- 详细规范见 [info-collect-spec.md](references/info-collect-spec.md)
+**核心说明**：
+- 采用两阶段调用协议（阶段 A 输出弹窗规范 → LLM 执行 AskUserQuestion → 阶段 B 写入 config）
+- standalone 模式收集 5 项（工作根目录、API Key、飞书 Webhook、公司库导入方案、部署方案），**不收集调度间隔**（子技能无定时调度任务环节）
+- proxy 模式收集 6 项（增加调度间隔，写入父技能 config 的 `schedule` 字段）
+- 脚本不直接调用 AskUserQuestion，通过两阶段调用协议实现跨 Agent 兼容
+- `gh auth login` / `wrangler login` 是系统级交互操作，脚本仅检测状态，实际登录由 LLM 执行
+- **详细规范（弹窗选项、字段映射、占位符检测、字段归属规则、输出 JSON 消费映射）见 [info-collect-spec.md](references/info-collect-spec.md)**
 
 ### 阶段 0：解析用户输入
 
@@ -197,13 +165,13 @@ python "{skill_dir}/scripts/collect-user-info.py" --mode standalone --check-only
 
 ### 阶段 1：数据拉取
 
-**★ 并行执行策略（v5.4.5）**：本阶段 1.1（API 脚本）和 1.2（WebFetch 多站点）**无依赖关系，必须并行执行**。主代理在单条消息中同时发起：
+**★ 并行执行策略**：本阶段 1.1（API 脚本）和 1.2（WebFetch 多站点）**无依赖关系，必须并行执行**。主代理在单条消息中同时发起：
 - 1 个 RunCommand 调用 fetch-data 脚本（API 结构化数据）
 - N 个 Task 子代理并行 WebFetch 不同白名单站点（每个子代理负责 1-2 个站点）
 
 并行可将数据拉取耗时从串行 ~60s 降至 ~20s。子代理返回结构化摘要（关键数据 + 同比 + 管理层评论 + 业绩指引），主代理汇总后进入阶段 2。
 
-**1.1 API 结构化数据**（脚本化，★ v5.5.0 起统一为 Python 入口）：
+**1.1 API 结构化数据**（脚本化，统一为 Python 入口）：
 
 ```bash
 # 跨平台统一调用
@@ -258,7 +226,7 @@ LLM 生成完整 sections JSON，遵循 `templates/sections-reference.md` 规范
   "meta": {
     "company_name": "...", "quarter": "Q2 2026", "report_type": "quarterly-earnings",
     "report_date": "...", "earnings_date": "...", "data_source": "...",
-    "currency_unit": "USD", "generated_at": "...", "report_version": "v5.4.4",
+    "currency_unit": "USD", "generated_at": "...", "report_version": "latest",
     "disclaimer_text": "本报告基于公开财务数据自动生成，仅供参考，不构成任何投资建议。"
   },
   "header": "<header class=\"report-head\">...</header>",
@@ -302,7 +270,7 @@ LLM 生成完整 sections JSON，遵循 `templates/sections-reference.md` 规范
 ### 阶段 4：模板填充
 
 ```bash
-# 跨平台统一调用（★ v5.5.0 起统一为 Python 入口）
+# 跨平台统一调用（统一为 Python 入口）
 python "{skill_dir}/scripts/fill-template.py" \
     --template-file "{skill_dir}/references/report-template.md" \
     --sections-file "{output_dir}/data/nok-q2-2026-sections.json" \
@@ -331,23 +299,23 @@ python "{skill_dir}/scripts/fill-template.py" \
 ### 阶段 5：单文件构建
 
 ```bash
-# 跨平台统一调用（★ v5.5.0 起统一为 Python 入口）
+# 跨平台统一调用（统一为 Python 入口）
 python "{skill_dir}/references/build-standalone.py" --source-dir "{output_dir}/nok-q2-2026-earnings"
 # 输出目录可省略，自动从 config.local.json / 平台默认值 读取
 python "{skill_dir}/references/build-standalone.py" --source-dir "{output_dir}/nok-q2-2026-earnings" --output-dir "{output_dir}"
 ```
 
 脚本自动（使用 Python 字符串 .replace() 精确匹配，避免正则不稳定）：
-1. echarts.min.js 自动复制（★ v5.4.4：从 `skill/assets/js/echarts.min.js` 复制到 `$SOURCE_DIR/_shared/js/`，无需网络下载）
+1. echarts.min.js 自动复制（从 `skill/assets/js/echarts.min.js` 复制到 `$SOURCE_DIR/_shared/js/`，无需网络下载）
 2. 内联 echarts.min.js 和 charts.js（转义 `</script>` 为 `<\/script>`）
-3. 输出单文件到中间产物路径：★ v5.5.3 输出到 `config.local.json` 的 `paths.output_dir`（用户工作空间，留空时脚本抛错提示用户配置）
+3. 输出单文件到中间产物路径：输出到 `config.local.json` 的 `paths.output_dir`（用户工作空间，留空时脚本抛错提示用户配置）
 
 **★ 移动到统一存放点**：构建完成后移动到 `{repo_dir}/reports/{TICKER}/{company-slug}-{quarter}-earnings.html`，删除 Output 根目录的中间产物。每个公司目录只保留一个 HTML 文件（不复制 index.html 副本）。
 
 ### 阶段 6：无头浏览器验证
 
 ```bash
-# 跨平台统一调用（★ v5.5.0 起仅保留 .py 主入口，删除 .ps1/.sh 包装器）
+# 跨平台统一调用（仅保留 .py 主入口，删除 .ps1/.sh 包装器）
 python "{skill_dir}/references/verify-headless.py" "{repo_dir}/reports/{TICKER}/{company-slug}-{quarter}-earnings.html"
 ```
 
@@ -373,7 +341,7 @@ Chrome 不可用时自动退化为纯 HTML 结构验证（不执行 JS，无法�
 
 脚本自动：启动临时 HTTP 服务器 → Chrome headless 截图 → HTML 结构验证 → 输出 PASS/FAIL → 关闭服务器。
 
-### 阶段 7-9：并行执行（★ v5.4.4）
+### 阶段 7-9：并行执行
 
 **阶段6验证 PASS 后，主代理在单条消息中并行启动 3 个子代理（Task 工具，`subagent_type: general_purpose_task`），等待全部返回。**
 
@@ -405,7 +373,7 @@ Chrome 不可用时自动退化为纯 HTML 结构验证（不执行 JS，无法�
 
 ```powershell
 # Windows
-# ★ v5.5.3 repo_dir 从 config.local.json 读取，默认 <工作根目录>/Output/stock-financial-reports（不从技能安装路径推断）
+# repo_dir 从 config.local.json 读取，默认 <工作根目录>/Output/stock-financial-reports（不从技能安装路径推断）
 $repoDir = "<从 config.local.json paths.repo_dir 读取，如 d:\TraeAutomaticTools\Output\earnings-reports>"
 $src = "$repoDir\reports"
 $dst = "$repoDir\cf-pages-deploy\reports"
@@ -425,7 +393,7 @@ npx --yes wrangler pages deploy . --project-name earnings-reports --branch main 
 
 ```bash
 # Mac/Linux
-# ★ v5.5.3 repo_dir 从 config.local.json 读取，默认 <工作根目录>/Output/stock-financial-reports（不从技能安装路径推断）
+# repo_dir 从 config.local.json 读取，默认 <工作根目录>/Output/stock-financial-reports（不从技能安装路径推断）
 repo_dir="<从 config.local.json paths.repo_dir 读取，如 ~/TraeAutomaticTools/Output/stock-financial-reports>"
 mkdir -p "$repo_dir/cf-pages-deploy/reports"
 cp -r "$repo_dir/reports/." "$repo_dir/cf-pages-deploy/reports/"
@@ -440,7 +408,7 @@ rm -rf "$repo_dir/cf-pages-deploy"
 - Cloudflare（必选主链接）：`https://earnings-reports.pages.dev/reports/{TICKER}/{filename}.html`
 - GitHub（可选备用，仅当 deployment.targets 含 github 时返回）：`https://wxdpop.github.io/earnings-reports/reports/{TICKER}/{filename}.html`
 
-**子代理 C — 阶段9 飞书推送**（★ v5.5.0 起统一为 Python 入口）：
+**子代理 C — 阶段9 飞书推送**（统一为 Python 入口）：
 
 ```bash
 # 跨平台统一调用（17 个参数，详见 send-feishu.py --help）
@@ -463,7 +431,7 @@ python "{skill_dir}/references/send-feishu.py" \
 - `--report-url`（可选）：GitHub Pages URL，仅当 `deployment.targets` 含 `github` 时传入；不含时留空，飞书卡片不显示 GitHub 备用按钮
 - `--repo-url`（可选）：GitHub 仓库 URL，仅当 `deployment.targets` 含 `github` 时传入；不含时留空，飞书卡片不显示 GitHub 仓库按钮
 
-Webhook URL 从 config.local.json 的 `feishu.webhook_url`（嵌套结构）加载（★ v5.5.0 统一入口，不再支持环境变量，严禁硬编码）。推送全中文交互卡片，返回推送结果（StatusCode: 0 success）。
+Webhook URL 从 config.local.json 的 `feishu.webhook_url`（嵌套结构）加载（统一入口，不再支持环境变量，严禁硬编码）。推送全中文交互卡片，返回推送结果（StatusCode: 0 success）。
 
 **任一子代理失败时，主代理弹窗提示具体失败阶段和原因。**
 
@@ -476,9 +444,9 @@ Webhook URL 从 config.local.json 的 `feishu.webhook_url`（嵌套结构）加�
 - **company-slug**：小写英文无空格（如 nok、tsmc、alphabet）
 - **quarter 格式**：`q{N}-{YYYY}`（如 q2-2026）
 - **占位符**：`{output_dir}` = 输出目录，`{skill_dir}` = 技能根目录，`{repo_dir}` = git 仓库目录
-- **脚本命名**：★ v5.5.0 起统一为 Python 单文件入口（`.py`），不再提供 `.ps1` / `.sh` 双版本；环境检测与 Chrome 路径检测在脚本内部按 `platform.system()` 分支处理
+- **脚本命名**：统一为 Python 单文件入口（`.py`），不再提供 `.ps1` / `.sh` 双版本；环境检测与 Chrome 路径检测在脚本内部按 `platform.system()` 分支处理
 
-### 跨平台脚本统一入口（★ v5.5.0）
+### 跨平台脚本统一入口
 
 **平台检测**：脚本内部使用 Python `platform.system()` 判定（`Windows` / `Darwin` / `Linux`），自动选择路径候选与命令，无需用户介入。
 
@@ -487,7 +455,7 @@ Webhook URL 从 config.local.json 的 `feishu.webhook_url`（嵌套结构）加�
 | 功能 | 脚本路径 | 关键参数 | 备注 |
 |------|---------|---------|------|
 | 环境检查+安装 | `scripts/check-and-install.py` | `--china` / `--fix-config` / `--force-check` / `--skip-check` | 内部按平台选择安装命令（winget/brew/apt） |
-| ★ 用户信息收集 | `scripts/collect-user-info.py` | `--mode standalone\|proxy` / `--answers` / `--check-only` | ★ v5.5.4 新增，承载 6 项弹窗收集逻辑 |
+| ★ 用户信息收集 | `scripts/collect-user-info.py` | `--mode standalone\|proxy` / `--answers` / `--check-only` | 承载 6 项弹窗收集逻辑 |
 | API 数据拉取 | `scripts/fetch-data.py` | `--symbol` / `--out-dir` | 完成后自动调用 parse-financial-data.py |
 | 模板填充 | `scripts/fill-template.py` | `--template-file` / `--sections-file` / `--output-file` | 含结构完整性校验 |
 | 单文件构建 | `references/build-standalone.py` | `--source-dir` / `--output-dir` | 使用 Python 字符串 .replace() 精确匹配 |
@@ -502,7 +470,7 @@ Webhook URL 从 config.local.json 的 `feishu.webhook_url`（嵌套结构）加�
 ### 脱敏检查
 
 - **严禁硬编码**：飞书 Webhook URL、API 密钥、令牌等敏感信息
-- **传入方式**：config.local.json（★ v5.5.0 唯一入口，被 .gitignore 排除）
+- **传入方式**：config.local.json（唯一入口，被 .gitignore 排除）
 - **配置字段**：`feishu.webhook_url`、`finnhub.api_key`、`alphavantage.api_key`、`paths.output_dir`、`paths.repo_dir`（均为嵌套结构）
 - **config.local.json 必须被 .gitignore 排除**，仅提交 config.example.json 模板
 - **提交前自查**：
@@ -519,11 +487,11 @@ Webhook URL 从 config.local.json 的 `feishu.webhook_url`（嵌套结构）加�
 | `references/build-standalone.py` | 单文件构建脚本（Python 字符串 .replace() 精确匹配） |
 | `references/verify-headless.py` | 无头浏览器验证脚本（跨平台 Python 3，内置 Chrome 三平台路径检测） |
 | `references/send-feishu.py` | 飞书群推送脚本（跨平台 Python 3） |
-| `references/info-collect-spec.md` | ★ v5.5.4 信息收集规范文档（collect-user-info.py 的静态参考镜像） |
+| `references/info-collect-spec.md` | 信息收集规范文档（collect-user-info.py 的静态参考镜像） |
 | `templates/sections-reference.md` | 各 section 必需子元素规范（结构校验依据） |
 | `assets/js/echarts.min.js` | ★ echarts@5.5.0 内置库（1MB，build 脚本自动复制） |
 | `scripts/check-and-install.py` | 环境检查+自动安装核心脚本（跨平台） |
-| `scripts/collect-user-info.py` | ★ v5.5.4 用户信息收集主入口（standalone/proxy 双模式） |
+| `scripts/collect-user-info.py` | 用户信息收集主入口（standalone/proxy 双模式） |
 | `scripts/fetch-data.py` | API 数据拉取脚本（跨平台，自动调用 parse-financial-data.py） |
 | `scripts/fill-template.py` | 模板填充脚本（跨平台，含结构完整性校验） |
 | `scripts/parse-financial-data.py` | ★ 财务数据解析工具（跨平台，fetch-data 自动调用） |
@@ -538,16 +506,16 @@ earnings-report-skill/
 ├── config.local.json                 # 真实配置（.gitignore 排除）
 ├── config.example.json               # 配置模板
 ├── assets/js/echarts.min.js          # ★ echarts 内置库
-├── references/                       # 参考资源与构建/验证/推送脚本（★ v5.5.0 统一 Python）
+├── references/                       # 参考资源与构建/验证/推送脚本（统一 Python）
 │   ├── report-template.md            # HTML 模板
 │   ├── charts-template.js            # 图表模板
 │   ├── build-standalone.py           # 单文件构建（跨平台 Python 3）
 │   ├── verify-headless.py            # 无头验证（跨平台 Python 3）
 │   ├── send-feishu.py                # 飞书推送（跨平台 Python 3）
-│   └── info-collect-spec.md          # ★ v5.5.4 信息收集规范文档
-├── scripts/                          # 核心脚本（★ v5.5.0 统一 Python 单文件入口）
+│   └── info-collect-spec.md          # 信息收集规范文档
+├── scripts/                          # 核心脚本（统一 Python 单文件入口）
 │   ├── check-and-install.py          # 环境检查+安装（跨平台）
-│   ├── collect-user-info.py          # ★ v5.5.4 用户信息收集（standalone/proxy 双模式）
+│   ├── collect-user-info.py          # 用户信息收集（standalone/proxy 双模式）
 │   ├── fetch-data.py                 # API 数据拉取（跨平台）
 │   ├── fill-template.py              # 模板填充（跨平台）
 │   └── parse-financial-data.py       # 数据解析（跨平台，fetch-data 自动调用）
@@ -558,14 +526,14 @@ earnings-report-skill/
 **生成的报告目录**（在用户工作空间的 git 仓库下，非 skill 目录）：
 
 ```
-<工作根目录>/Output/stock-financial-reports/    # ★ v5.5.3 用户工作空间
+<工作根目录>/Output/stock-financial-reports/    # 用户工作空间
 ├── reports/{TICKER}/                 # 最终 HTML 统一存放点
 │   └── {company-slug}-{quarter}-earnings.html
 └── data/{symbol}-{quarter}/          # API 数据（供调试）
     └── {symbol}-{profile|recommendations|income-statement|balance-sheet|cashflow}.json
 ```
 
-★ v5.5.3 `repo_dir` 从 `config.local.json` 的 `paths.repo_dir` 读取，默认 `<工作根目录>/Output/stock-financial-reports`（不从技能安装路径推断）。
+`repo_dir` 从 `config.local.json` 的 `paths.repo_dir` 读取，默认 `<工作根目录>/Output/stock-financial-reports`（不从技能安装路径推断）。
 
 ### 报告结构（12 章节固定顺序）
 

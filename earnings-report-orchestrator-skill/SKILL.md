@@ -3,27 +3,29 @@ name: "earnings-report-orchestrator"
 description: "财报编排调度技能。1句话触发初始化：先收集调度间隔/配置/公司库（前置用户交互），再由 LLM 检测并自动安装 Python 前提项，调用子技能脚本生成 env-check-result 缓存，自动创建定时任务。符合触发条件才真正调用子技能生成报告。"
 ---
 
-# 财报编排调度器（v3.2.3）
+# 财报编排调度器
+
+> **★ 版本管理约定**：本技能不记录历史版本信息，始终更新到最新版本。Git 操作固定使用 git CLI。
 
 ## 概述
 
 父技能（orchestrator），作为**编排层**，不重写报告生成逻辑：
 
-1. **★ 信息收集前置**（v3.2.3 起由子技能代理）：1 句话触发初始化后，调用子技能 `collect-user-info.py --mode proxy` 代理收集「工作根目录 + 调度间隔 + API Key + Webhook + 公司库 + 部署方案」6 项用户交互，收集完毕再执行环境检测
+1. **★ 信息收集前置**（由子技能代理）：1 句话触发初始化后，调用子技能 `collect-user-info.py --mode proxy` 代理收集「工作根目录 + 调度间隔 + API Key + Webhook + 公司库 + 部署方案」6 项用户交互，收集完毕再执行环境检测
 2. **★ Python 前提项 + LLM 自动安装**：Python 3.8+ 是所有脚本运行前提。LLM 检测到 Python 不存在时**直接调用系统包管理器安装**（winget/brew/apt），无需用户确认
 3. **★ 父技能代理子技能环境检测**：调用子技能 `check-and-install.py`，子技能目录生成 `.env-check-result.{platform}.json` 缓存（永久有效）
 4. **★ 自动创建定时任务**：通过 TRAE `Schedule` 工具创建（默认每 12 小时），符合触发条件才调用子技能
 5. **★ 就绪检查三验证**：财报发布 + 电话会议结束 + 媒体更新全 PASS → 调用子技能 `earnings-report` 生成报告
-6. **★ v3.1 静默调度规则**：定时任务触发后，直接读取初始化标记和公司库。当天无财报→**静默不输出**；有财报未发布→**仅输出提示**，等待下一次调度
-7. **★ v3.2 路径动态化 + 部署可选**：所有路径基于技能实际安装目录推断，不硬编码开发仓库路径；Cloudflare 部署必选（默认）+ GitHub 部署可选
-8. **★ v3.2.1 路径分类规则**：区分"配置文件目录"（技能安装目录）和"输出/仓库目录"（用户工作空间）；输出目录初始化时由 LLM 询问工作根目录后填写为 `<工作根目录>/Output/stock-financial-reports`，不从技能安装路径推断
-9. **★ v3.2.2 Python 探测优先级 + stub 跳过**：agent 内置 Python 优先于系统 PATH，跳过 Windows Store 0 字节 stub；探测到的绝对路径写入 `config.local.json` 的 `python_executable` 字段，子技能缓存 `.env-check-result.{platform}.json` 也写入 `py_executable`，所有后续脚本调用使用绝对路径不依赖 PATH
+6. **★ 静默调度规则**：定时任务触发后，直接读取初始化标记和公司库。当天无财报→**静默不输出**；有财报未发布→**仅输出提示**，等待下一次调度
+7. **★ 路径动态化 + 部署可选**：所有路径基于技能实际安装目录推断，不硬编码开发仓库路径；Cloudflare 部署必选（默认）+ GitHub 部署可选
+8. **★ 路径分类规则**：区分"配置文件目录"（技能安装目录）和"输出/仓库目录"（用户工作空间）；输出目录初始化时由 LLM 询问工作根目录后填写为 `<工作根目录>/Output/stock-financial-reports`，不从技能安装路径推断
+9. **★ Python 探测优先级 + stub 跳过**：agent 内置 Python 优先于系统 PATH，跳过 Windows Store 0 字节 stub；探测到的绝对路径写入 `config.local.json` 的 `python_executable` 字段，子技能缓存 `.env-check-result.{platform}.json` 也写入 `py_executable`，所有后续脚本调用使用绝对路径不依赖 PATH
 
-**与子技能的关系**：父技能**不改动子技能文件**，只读取/调用子技能脚本。子技能 v5.5.0+ 已统一 Python 单文件，父技能统一用 `python_executable` 绝对路径调用，无平台分支。
+**与子技能的关系**：父技能**不改动子技能文件**，只读取/调用子技能脚本。子技能已统一 Python 单文件，父技能统一用 `python_executable` 绝对路径调用，无平台分支。
 
 ## 关键地址
 
-★ v3.2.1 路径分类规则（核心改造）：
+路径分类规则（核心改造）：
 
 - **配置文件目录**（config.local.json / company-library.json / .parent-init-done.json / .env-check-result.\*.json）：基于"当前技能实际安装目录"推断（`Path(__file__).resolve().parent.parent`）
 - **输出/仓库目录**（paths.output\_dir / paths.repo\_dir）：在**用户工作空间**，与技能安装目录无关，必须由用户在初始化时显式填写
@@ -39,7 +41,7 @@ description: "财报编排调度技能。1句话触发初始化：先收集调�
 | **git 仓库目录**     | 同报告输出目录（`<工作根目录>/Output/stock-financial-reports`，需为 git 仓库根目录）                                                             | **输出目录** |
 | TRAE Schedule 工具 | 平台原生（cron 5 字段，最小 10 分钟粒度）                                                                                          | —        |
 
-**★ v3.2.1 路径推断规则**（区分两类目录）：
+**路径推断规则**（区分两类目录）：
 
 - **配置文件目录**：父技能脚本通过 `Path(__file__).resolve().parent.parent` 获取父技能安装目录；子技能目录默认推断为 `<父技能安装目录>/../earnings-report`（兄弟目录关系）
 - **输出/仓库目录**：**不从技能安装路径推断**，初始化时 LLM 询问用户工作根目录，填写为 `<工作根目录>/Output/stock-financial-reports`；留空时脚本抛错提示用户配置
@@ -66,26 +68,26 @@ description: "财报编排调度技能。1句话触发初始化：先收集调�
 5. `config.local.json` 必须被 `.gitignore` 排除（脱敏）
 6. 执行完毕清理资源（删除临时脚本、关闭 HTTP 服务器）
 7. Trae 专有能力（Schedule、AskUserQuestion、Task 子代理、WebFetch）以 ★ 标注，其他 agent 可降级为系统 cron / 命令行 stdin / 串行执行 / Python requests
-8. **★ v3.2.2 Python 调用全局规则**：本文档中所有 `python "{...}"` 命令模板中的 `python` 占位符，LLM 实际执行时**必须替换为** `config.local.json` 的 `python_executable` 字段绝对路径（初始化阶段 3 探测并缓存，优先 agent 内置 Python）。原因：Windows Store「应用执行别名」0 字节 stub 会拦截 `python` 命令导致退出码 9009。示例：`python "{parent_skill_dir}\scripts\library-manager.py" --action today` 实际执行为 `"<python_executable>" "{parent_skill_dir}\scripts\library-manager.py" --action today`
+8. **Python 调用全局规则**：本文档中所有 `python "{...}"` 命令模板中的 `python` 占位符，LLM 实际执行时**必须替换为** `config.local.json` 的 `python_executable` 字段绝对路径（初始化阶段 3 探测并缓存，优先 agent 内置 Python）。原因：Windows Store「应用执行别名」0 字节 stub 会拦截 `python` 命令导致退出码 9009。示例：`python "{parent_skill_dir}\scripts\library-manager.py" --action today` 实际执行为 `"<python_executable>" "{parent_skill_dir}\scripts\library-manager.py" --action today`
 
 ## 工作流程
 
-### 阶段 -1：1 句话初始化（★ v3.0 核心改造：信息收集前置 + Python 自动安装）
+### 阶段 -1：1 句话初始化（核心改造：信息收集前置 + Python 自动安装）
 
 **触发**：用户说"请执行初始化"、"初始化父技能"、"init parent"，或首次调用父技能、环境变更、用户主动要求初始化。
 
-**★ v3.0 流程顺序（不可调整）**：
+**流程顺序（不可调整）**：
 
 ```
 步骤 1：加载/创建父技能 config.local.json
     ↓
 步骤 2：★ 信息收集前置（6 项用户交互一次性收集）
-    │   2.0 ★ v3.2.1 收集工作根目录（输出目录定位，与技能安装目录无关）
+    │   2.0 收集工作根目录（输出目录定位，与技能安装目录无关）
     │   2.1 收集调度间隔（默认每12小时）
     │   2.2 收集 API Key 状态（已有/需注册）
     │   2.3 收集飞书 Webhook 状态（已有/需配置/跳过）
     │   2.4 收集公司库导入方案（默认美股7巨头）
-    │   2.5 ★ v3.2 收集部署方案（默认仅 Cloudflare；可选追加 GitHub）
+    │   2.5 收集部署方案（默认仅 Cloudflare；可选追加 GitHub）
     ↓
 步骤 3：★ Python 前提项检测 + LLM 自动安装
     │   3.1 检测 python --version
@@ -104,7 +106,7 @@ description: "财报编排调度技能。1句话触发初始化：先收集调�
     ↓
 步骤 6：引导用户编辑 config.local.json（如步骤2标记需注册/配置）
     ↓
-步骤 6.5：★ v3.2 Cloudflare API Token + GitHub 可选登录
+步骤 6.5：Cloudflare API Token + GitHub 可选登录
     │   6.1 引导获取 Cloudflare API Token（必选，用于 Cloudflare Pages 部署）
     │   6.2 GitHub 登录（可选，步骤 2.5 判断）
     │       - 部署方案含 github → 执行 gh auth login
@@ -121,68 +123,41 @@ description: "财报编排调度技能。1句话触发初始化：先收集调�
 步骤 11：输出初始化完成摘要
 ```
 
-#### 步骤 1：加载/创建父技能配置（★ v3.2.1 路径分类推断）
+#### 步骤 1：加载/创建父技能配置（路径分类推断）
 
 - **获取当前技能安装路径**：LLM 通过脚本所在目录推断 `parent_skill_dir`（即 SKILL.md 所在目录）
 - 读取 `{parent_skill_dir}/config.local.json`
 - 不存在则从 `config.example.json` 复制模板
-- **★ v3.2.1 配置文件目录自动填充**（config.local.json 中配置字段为空时）：
+- **配置文件目录自动填充**（config.local.json 中配置字段为空时）：
   - `parent_skill_dir` = 当前 SKILL.md 所在目录（绝对路径）
   - `child_skill_dir` = `<parent_skill_dir>/../earnings-report`（兄弟目录，自动推断）
-- **★ v3.2.1 输出目录需用户填写**（不从技能安装路径推断）：
+- **输出目录需用户填写**（不从技能安装路径推断）：
   - `paths.output_dir` = `<工作根目录>/Output/stock-financial-reports`（LLM 询问用户工作根目录后填写）
   - `paths.repo_dir` = 同 `paths.output_dir`（git 仓库根目录）
   - ★ 输出目录与配置文件目录是不同概念：配置文件在技能安装目录，输出目录在用户工作空间
 - 校验 `child_skill_dir` 目录存在；不存在则弹窗提示用户手动指定
 
-#### 步骤 2：★ 信息收集前置（v3.2.3 起由子技能 collect-user-info.py 代理收集 6 项）
+#### 步骤 2：★ 信息收集前置（由子技能 collect-user-info.py 代理收集 6 项）
 
 **调用子技能代理收集**：
 
 ```bash
-# 阶段 A：输出 6 项弹窗规范 JSON
+# 阶段 A：输出弹窗规范 JSON
 python "{child_skill_dir}/scripts/collect-user-info.py" --mode proxy --parent-config "{parent_skill_dir}/config.local.json"
 
 # 阶段 B：LLM 按规范执行 AskUserQuestion 后回传答案，写入父技能 config.local.json
 python "{child_skill_dir}/scripts/collect-user-info.py" --mode proxy --parent-config "{parent_skill_dir}/config.local.json" --answers /path/to/answers.json
 ```
 
-**两阶段调用协议**：
+**核心说明**：
+- 采用两阶段调用协议（阶段 A 输出弹窗规范 → LLM 执行 AskUserQuestion → 阶段 B 写入 config）
+- 收集 6 项：工作根目录、调度间隔、API Key、飞书 Webhook、公司库导入方案、部署方案
+- 阶段 B 输出 JSON 供后续步骤消费（`placeholders_remaining` → 步骤 6；`company_library_*` → 步骤 8；`schedule_*` → 步骤 10；`cloudflare_configured` / `github_login_*` → 步骤 6.5/9）
+- **详细规范（弹窗选项、字段映射、占位符检测、输出 JSON 消费映射）见子技能 [info-collect-spec.md](../earnings-report-skill/references/info-collect-spec.md)**
 
-| 阶段 | 触发条件 | 行为 |
-|---|---|---|
-| 阶段 A | 无 `--answers` 参数 | 子技能脚本输出 6 项弹窗规范 JSON，父技能 LLM 按规范执行 AskUserQuestion，组装 answers.json |
-| 阶段 B | 带 `--answers <path>` 参数 | 子技能脚本读取答案，写入父技能 config.local.json，输出最终状态 JSON |
+#### 步骤 3：★ Python 前提项检测 + LLM 自动安装（agent 优先检测）
 
-**6 项收集项**（详细规范见子技能 [info-collect-spec.md](../earnings-report-skill/references/info-collect-spec.md)）：
-1. 工作根目录 → `paths.output_dir` / `paths.repo_dir`
-2. 调度间隔 → `schedule.cron` / `schedule.timezone` / `schedule.enabled`
-3. API Key 状态 → `finnhub.api_key` / `alphavantage.api_key`（标记后续引导编辑）
-4. 飞书 Webhook 状态 → `feishu.webhook_url`
-5. 公司库导入方案 → 输出 JSON 的 `company_library_choice` / `company_library_tickers`（不写入 config，供步骤 8 消费）
-6. 部署方案 → `deployment.targets` / `deployment.github.enabled`
-
-**字段写入规则**：
-- `paths.output_dir` / `paths.repo_dir` ← 弹窗 0 工作根目录 + `/Output/stock-financial-reports`
-- `schedule.cron` / `schedule.timezone` / `schedule.enabled` ← 弹窗 1 选择
-- `deployment.targets` / `deployment.github.enabled` ← 弹窗 5 选择
-- `finnhub.api_key` / `alphavantage.api_key` / `feishu.webhook_url` / `deployment.cloudflare.*` ← 占位符（待步骤 6/6.5 引导用户编辑）
-- `child_skill_dir` / `parent_skill_dir` / `python_executable` ← 不由收集脚本写入（由步骤 1/3 自管理）
-
-**阶段 B 输出 JSON 消费映射**（供后续步骤读取）：
-
-| 输出字段 | 消费步骤 | 用途 |
-|---|---|---|
-| `collected_fields` / `placeholders_remaining` | 步骤 6 | 占位符检测依据 |
-| `company_library_choice` / `company_library_tickers` | 步骤 8 | 公司库导入方案 |
-| `schedule_cron` / `schedule_timezone` | 步骤 10 | 创建定时任务 |
-| `cloudflare_configured` | 步骤 9 | 写入 `.parent-init-done.json` 标记 |
-| `github_login_required` / `github_login_status` | 步骤 6.5/9 | GitHub 登录引导 + 标记写入 |
-| `next_actions` | 步骤 6/6.5 | 引导用户后续操作的动作清单 |
-
-#### 步骤 3：★ Python 前提项检测 + LLM 自动安装（★ v3.2.2 agent 优先检测）
-
-**★ v3.2.2 检测原则**：先检测当前 agent 是否内置 Python（沙箱环境，requests 等常用库已预装），有就标记后续直接使用 agent 内置路径；agent 没有再检测系统级别；系统没有就直接安装并校验 PATH。
+**检测原则**：先检测当前 agent 是否内置 Python（沙箱环境，requests 等常用库已预装），有就标记后续直接使用 agent 内置路径；agent 没有再检测系统级别；系统没有就直接安装并校验 PATH。
 
 **3.1 检测 agent 内置 Python（优先）**
 
@@ -243,7 +218,7 @@ sudo apt-get update && sudo apt-get install -y python3 python3-pip
 sudo yum install -y python3 python3-pip
 ```
 
-**3.5 ★ v3.2.2 安装后 PATH 校验（关键）**
+**3.5 安装后 PATH 校验（关键）**
 
 安装完成后，winget/brew/apt 可能未立即刷新当前进程 PATH，必须主动校验：
 
@@ -284,7 +259,7 @@ exec bash -l  # 或重新打开终端
 #### 步骤 4：调用子技能环境检测脚本（★ 不改动子技能文件，实际执行子技能脚本）
 
 ```bash
-# ★ v3.2.2：使用步骤 3 探测到的 python_executable 绝对路径，不依赖 PATH
+# 使用步骤 3 探测到的 python_executable 绝对路径，不依赖 PATH
 "<python_executable>" "{child_skill_dir}\scripts\check-and-install.py"
 ```
 
@@ -297,8 +272,8 @@ exec bash -l  # 或重新打开终端
 **子脚本执行内容**（父技能不关心细节，只看结果）：
 
 - 并行检查 9 项依赖（Node.js 18+ / Chrome / Git / GitHub CLI / wrangler / PowerShell 7+ / config.local.json / git 仓库）
-- ★ v5.5.1：`check_python()` 内部使用 `resolve_python_executable()` 优先探测 agent 内置 Python，跳过 Windows Store 0 字节 stub
-- ★ v5.5.1：`save_cache()` 将探测到的 `py_executable` 绝对路径写入 `.env-check-result.{platform}.json` 缓存
+- `check_python()` 内部使用 `resolve_python_executable()` 优先探测 agent 内置 Python，跳过 Windows Store 0 字节 stub
+- `save_cache()` 将探测到的 `py_executable` 绝对路径写入 `.env-check-result.{platform}.json` 缓存
 - 缺失依赖自动安装（国内 IP 自动启用镜像源：npm 淘宝 / pip 清华 / Homebrew 清华 / apt 清华）
 - 全部 PASS 后在子技能目录生成 `.env-check-result.{platform}.json` 缓存（下次秒级通过）
 
@@ -306,10 +281,10 @@ exec bash -l  # 或重新打开终端
 
 - 父技能读取 `{child_skill_dir}\.env-check-result.windows.json`（Windows）/ `.env-check-result.macos.json`（Mac）/ `.env-check-result.linux.json`（Linux）
 - 确认 `all_pass=true`，提取 `check_time`
-- ★ v3.2.2：提取缓存中的 `py_executable` 字段，若 `config.local.json` 的 `python_executable` 为空则回填
+- 提取缓存中的 `py_executable` 字段，若 `config.local.json` 的 `python_executable` 为空则回填
 - 缓存不存在或 `all_pass=false` → 弹窗提示子技能脚本执行失败的具体原因
 
-#### 步骤 6：引导用户编辑 config.local.json（v3.2.3 起占位符检测由子技能脚本统一执行）
+#### 步骤 6：引导用户编辑 config.local.json（占位符检测由子技能脚本统一执行）
 
 **判断逻辑**：
 
@@ -330,54 +305,20 @@ exec bash -l  # 或重新打开终端
 填入后再次说"请执行初始化"完成配置同步。
 ```
 
-**占位符检测**（★ v3.2.3 起由子技能 `collect-user-info.py --check-only` 统一执行，5 项）：
+**占位符检测**：占位符检测由子技能 `collect-user-info.py --check-only` 统一执行（5 项，详见 [info-collect-spec.md](../earnings-report-skill/references/info-collect-spec.md)）
 
-- 检测到 `config.local.json` 仍含 `<your-xxx>` 占位符 → 提示用户编辑，终止流程
-- 占位符全部替换 → 进入步骤 6.5
+#### 步骤 6.5：Cloudflare API Token + GitHub 可选登录（引导文案由子技能脚本输出）
 
-#### 步骤 6.5：★ v3.2 Cloudflare API Token + GitHub 可选登录（v3.2.3 起引导文案由子技能脚本输出）
+**6.5.1 Cloudflare**（必选，deployment.targets 含 cloudflare 时执行）
 
-**6.5.1 引导获取 Cloudflare API Token**（必选，deployment.targets 含 cloudflare 时执行）
-
-**判断逻辑**：读取步骤 2 阶段 B 输出 JSON 的 `cloudflare_configured` 字段：
-- `cloudflare_configured=false` → 输出引导文案（来自 `next_actions` 中 `action=edit_config` 的 `fields=deployment.cloudflare.*` 条目）
+- 读取步骤 2 阶段 B 输出 JSON 的 `cloudflare_configured` 字段判断是否需要引导
+- `cloudflare_configured=false` → 引导文案由 `next_actions` 输出（无需父技能重复输出）
 - `cloudflare_configured=true` → 跳过引导
 
-**输出提示语**（仅在 `cloudflare_configured=false` 时）：
-
-```
-请前往 Cloudflare 获取 API Token：
-1. 访问 https://dash.cloudflare.com/profile/api-tokens
-2. 点击 "Create Token"
-3. 选择 "Edit Cloudflare Workers" 模板（或自定义，需包含 Cloudflare Pages 编辑权限）
-4. 复制生成的 Token 填入 config.local.json 的 deployment.cloudflare.api_token 字段
-5. 同时填入 deployment.cloudflare.account_id（在 Cloudflare 仪表盘右侧可以看到）
-
-填入后继续执行初始化。
-```
-
-**6.5.2 GitHub 登录**（可选，根据步骤 2 阶段 B 输出 JSON 的 `github_login_required` 字段判断）
-
-**判断逻辑**：
+**6.5.2 GitHub 登录**（可选，根据步骤 2 阶段 B 输出 JSON 的字段判断）
 
 - 读取 `github_login_required` 字段：`true` → 执行 GitHub 登录；`false` → **跳过 GitHub 登录**
-- 读取 `github_login_status` 字段：`logged_in` → 跳过登录；`not_logged_in` → 执行登录
-
-**GitHub 登录命令**（`github_login_required=true` 且 `github_login_status=not_logged_in` 时执行）：
-
-```bash
-# 检测 gh CLI 是否已登录（子技能脚本已检测，此处仅复核）
-gh auth status 2>&1
-
-# 未登录则执行登录（非交互式，使用 token）
-gh auth login --with-token
-```
-
-**登录失败处理**：
-
-- gh CLI 未安装 → 子技能环境检测脚本（步骤 4）应已安装
-- 登录失败 → 弹窗提示用户手动执行 `gh auth login`，终止流程
-- 登录成功 → 继续步骤 7
+- 读取 `github_login_status` 字段：`logged_in` → 跳过登录；`not_logged_in` → 执行登录（`gh auth login`）
 
 **★ 默认部署流程（仅 Cloudflare）**（`github_login_required=false`）：
 
@@ -397,7 +338,7 @@ gh auth login --with-token
 
 ★ 部署方案约束：Cloudflare 始终必选（不可关闭）；GitHub 为可选项，默认不启用。
 
-#### 步骤 7：同步配置到子技能目录（★ v3.2.3 起时机后移到子技能收集完成后，父→子复制仍保留）
+#### 步骤 7：同步配置到子技能目录（时机后移到子技能收集完成后，父→子复制仍保留）
 
 - 读取父技能 `config.local.json`（此时已由步骤 2 子技能 `collect-user-info.py --mode proxy` 写入完毕）
 - **去除** `child_skill_dir` / `parent_skill_dir` / `python_executable` / `schedule` 字段（子技能不需要）
@@ -405,7 +346,7 @@ gh auth login --with-token
 - 写入子技能目录 `config.local.json`（覆盖）
 - 这样子技能脚本读取自身目录配置即可工作
 
-#### 步骤 8：导入公司库（v3.2.3 起方案从步骤 2 阶段 B 输出 JSON 读取）
+#### 步骤 8：导入公司库（方案从步骤 2 阶段 B 输出 JSON 读取）
 
 **触发依据**：从步骤 2 阶段 B 输出 JSON 的 `company_library_choice` 和 `company_library_tickers` 字段读取
 
@@ -438,14 +379,13 @@ MAGNIFICENT_7 = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA"]
 
 **已存在公司处理**：ticker 已存在 → 跳过不覆盖，输出 `skipped` 列表。
 
-#### 步骤 9：写入父技能初始化标记（v3.2.3 起标记值从步骤 2 输出 JSON 读取）
+#### 步骤 9：写入父技能初始化标记（标记值从步骤 2 输出 JSON 读取）
 
 ```json
 // {parent_skill_dir}\.parent-init-done.json
 {
   "initialized_at": "2026-07-28T10:00:00+08:00",
   "child_skill_dir": "<初始化时根据技能安装路径自动填充>",
-  "child_skill_version": "v5.5.4",
   "env_check_passed": true,
   "env_check_cache": ".env-check-result.windows.json",
   "config_synced": true,
@@ -470,9 +410,9 @@ name: "财报调度-12h"
 cron_expression: "<从父技能 config.local.json 的 schedule.cron 读取，由步骤 2 子技能代理收集写入>"
 timezone: "<从父技能 config.local.json 的 schedule.timezone 读取>"
 message: |
-  执行财报调度任务（父技能 earnings-report-orchestrator v3.2.1 静默调度）：
+  执行财报调度任务（父技能 earnings-report-orchestrator 静默调度）：
   
-  ★ v3.1 静默规则：默认不输出任何内容，仅在特定情况输出（见下方规则）
+  静默规则：默认不输出任何内容，仅在特定情况输出（见下方规则）
   
   1. 读取 {parent_skill_dir}\.parent-init-done.json
      - 不存在或 env_check_passed=false → 弹窗提示"父技能未初始化，请说'请执行初始化'"，终止
@@ -521,7 +461,7 @@ message: |
 #### 步骤 11：输出初始化完成摘要
 
 ```
-✅ 父技能初始化完成（v3.2.3）
+✅ 父技能初始化完成
 - Python 版本：3.12.x
 - 子技能环境检测：全部 PASS（缓存已生成）
 - 配置收集：已由子技能 collect-user-info.py 代理收集并同步
@@ -535,7 +475,7 @@ message: |
 - "为 NVDA 生成财报报告" 手动跳过就绪检查直接生成
 ```
 
-#### 步骤 12：后续调用（★ v3.1 跳过初始化，直接读标记和公司库）
+#### 步骤 12：后续调用（跳过初始化，直接读标记和公司库）
 
 **初始化标记检测逻辑**：
 
@@ -545,7 +485,7 @@ message: |
 读取 {parent_skill_dir}\.parent-init-done.json
     ↓
 标记存在且 env_check_passed=true？
-    ├─ 是 → ★ v3.1 直接读取公司库，进入调度执行流程（阶段 1.3）
+    ├─ 是 → 直接读取公司库，进入调度执行流程（阶段 1.3）
     │       不重新执行环境检测、不弹窗、不输出初始化信息
     │       子技能被调用时读取自身缓存秒级通过
     │
@@ -556,7 +496,7 @@ message: |
 
 **`--force-init`** **参数**：用户主动说"重新初始化"时，强制重新执行阶段 -1 完整 11 步流程。
 
-**★ v3.1 静默规则**：后续调用不输出任何"正在检查初始化标记"之类的日志，直接读标记 → 读公司库 → 进入调度逻辑。只有以下 3 种情况才输出：
+**静默规则**：后续调用不输出任何"正在检查初始化标记"之类的日志，直接读标记 → 读公司库 → 进入调度逻辑。只有以下 3 种情况才输出：
 
 1. 标记不存在/未通过 → 弹窗提示初始化
 2. 有公司财报未发布 → 输出"XX公司当日有财报更新计划，正式财报还没有发布，等待下一次调度执行"
@@ -678,9 +618,9 @@ python "{parent_skill_dir}\scripts\library-manager.py" --action today
 
 通过 `Schedule` 工具创建（详见步骤 10）。
 
-#### 1.3 调度任务执行内容（★ v3.1 静默调度规则）
+#### 1.3 调度任务执行内容（静默调度规则）
 
-**★ v3.1 核心改造**：调度任务触发后，先读初始化标记，再读公司库，根据公司库状态决定输出行为。**默认静默**，仅在特定情况输出。
+**核心改造**：调度任务触发后，先读初始化标记，再读公司库，根据公司库状态决定输出行为。**默认静默**，仅在特定情况输出。
 
 ```
 [定时任务触发]
@@ -741,7 +681,7 @@ python "{parent_skill_dir}\scripts\library-manager.py" --action today
 8. 输出生成摘要（仅在报告生成成功时输出）
 ```
 
-**★ v3.1 静默规则总结**（★ v3.2.2 方案A 增加发布时间判断）：
+**静默规则总结**（方案A 增加发布时间判断）：
 
 | 场景                                   | 输出行为                                   |
 | ------------------------------------ | -------------------------------------- |
@@ -805,7 +745,7 @@ python "{parent_skill_dir}\scripts\readiness-check.py" --ticker "NVDA" --quarter
 **前置条件**：阶段 2 三项全 PASS，或用户手动触发跳过就绪检查。
 
 ```bash
-# ★ v3.2.2：python 须替换为 config.local.json 的 python_executable 绝对路径（见自动化硬性约束第 8 条）
+# python 须替换为 config.local.json 的 python_executable 绝对路径（见自动化硬性约束第 8 条）
 python "{parent_skill_dir}\scripts\dispatch-child-skill.py" --ticker "NVDA" --quarter "Q2 FY2026"
 ```
 
@@ -813,10 +753,10 @@ python "{parent_skill_dir}\scripts\dispatch-child-skill.py" --ticker "NVDA" --qu
 
 1. 从 `config.local.json` 读取 `child_skill_dir`、`output_dir`、`repo_dir`
 2. 校验子技能目录存在、`.parent-init-done.json` 标记存在
-3. ★ v3.2.2：调用 `resolve_python_executable()` 解析 Python 绝对路径（7 级优先级），输出 JSON 的 `script_invocation` 字段为绝对路径
+3. 调用 `resolve_python_executable()` 解析 Python 绝对路径（7 级优先级），输出 JSON 的 `script_invocation` 字段为绝对路径
 4. 输出子技能脚本调用序列（JSON），LLM 按此序列执行子技能 9 阶段工作流（`command` 字段已用绝对路径，LLM 直接执行即可）
 
-**★ v3.0 统一 Python 调用**（子技能 v5.5.0+ 已统一 Python 单文件，无平台分支）：
+**统一 Python 调用**（子技能已统一 Python 单文件，无平台分支）：
 
 ```
 # 以下命令模板中的 python 须替换为 dispatch-child-skill.py 输出 JSON 的 script_invocation 字段值
@@ -899,7 +839,7 @@ python "{parent_skill_dir}\scripts\library-manager.py" --action update-status \
 }
 ```
 
-★ v3.2.1 路径字段说明（区分两类目录）：
+路径字段说明（区分两类目录）：
 
 - `child_skill_dir` / `parent_skill_dir`：**配置文件目录**，留空时初始化自动推断（推荐留空）
 - `paths.output_dir`：**输出目录**，在用户工作空间，留空时由初始化弹窗 0 询问工作根目录后填写为 `<工作根目录>/Output/stock-financial-reports`
@@ -911,10 +851,7 @@ python "{parent_skill_dir}\scripts\library-manager.py" --action update-status \
 
 ### 子技能配置同步
 
-- **★ v3.2.3 信息收集由子技能代理**：父技能初始化时（步骤 2），调用子技能 `collect-user-info.py --mode proxy` 直接写入父技能 `config.local.json`（含 `schedule` / `paths` / `deployment` / `feishu` / `finnhub` / `alphavantage` 字段）
-- **父→子复制仍保留**（步骤 7，时机后移到子技能收集完成后）：将父技能配置**去除** `child_skill_dir` / `parent_skill_dir` / `python_executable` / `schedule` 字段后，复制到子技能目录 `config.local.json`
-- 后续以子技能目录下的 `config.local.json` 为准（子技能脚本读取自身目录）
-- 父技能不主动同步配置变更，避免覆盖用户在子技能侧的修改
+信息收集由子技能 `collect-user-info.py --mode proxy` 代理写入父技能 config.local.json，详细规范见 [info-collect-spec.md](../earnings-report-skill/references/info-collect-spec.md)。
 
 ## 跨平台脚本规范
 
@@ -925,14 +862,14 @@ python "{parent_skill_dir}\scripts\library-manager.py" --action update-status \
 | `scripts/library-manager.py`      | 公司库 CRUD                                |
 | `scripts/earnings-calendar.py`    | 财报日历拉取（Finnhub / IR）                    |
 | `scripts/readiness-check.py`      | 就绪检查三项（HTTP 检查部分由 LLM 用 WebFetch 执行）    |
-| `scripts/dispatch-child-skill.py` | 子技能调度器（参数封装 + 路径校验，★ v3.0 统一 Python 调用） |
+| `scripts/dispatch-child-skill.py` | 子技能调度器（参数封装 + 路径校验，统一 Python 调用） |
 
-**子技能脚本调用对应**（★ v3.0 统一 Python，无平台分支）：
+**子技能脚本调用对应**（统一 Python，无平台分支）：
 
 | 功能       | 子技能脚本路径                           | 调用方式                                                               |
 | -------- | --------------------------------- | ------------------------------------------------------------------ |
 | 环境检查+安装  | `scripts/check-and-install.py`    | `python`                                                           |
-| ★ 用户信息收集 | `scripts/collect-user-info.py`    | `python --mode proxy --parent-config ... --answers ...`（★ v3.2.3 新增，父技能步骤 2 调用） |
+| ★ 用户信息收集 | `scripts/collect-user-info.py`    | `python --mode proxy --parent-config ... --answers ...`（父技能步骤 2 调用） |
 | API 数据拉取 | `scripts/fetch-data.py`           | `python --symbol XXX --out-dir YYY`                                |
 | 财务数据解析   | `scripts/parse-financial-data.py` | `python {data_dir}`                                                |
 | 模板填充     | `scripts/fill-template.py`        | `python --template-file ... --sections-file ... --output-file ...` |
@@ -954,7 +891,7 @@ earnings-report-orchestrator-skill/
 │   ├── library-manager.py            # 公司库 CRUD
 │   ├── earnings-calendar.py          # 财报日历拉取
 │   ├── readiness-check.py            # 就绪检查三项
-│   └── dispatch-child-skill.py       # 子技能调度器（★ v3.0 统一 Python 调用）
+│   └── dispatch-child-skill.py       # 子技能调度器（统一 Python 调用）
 └── scheduler/
     └── cron-task-definition.md       # 定时任务调度规范
 ```
@@ -969,7 +906,7 @@ earnings-report-orchestrator-skill/
 | `scripts/library-manager.py`        | 公司库 CRUD（跨平台）                        |
 | `scripts/earnings-calendar.py`      | 财报日历拉取（Finnhub / IR）                 |
 | `scripts/readiness-check.py`        | 就绪检查三项（财报+电话会+媒体）                    |
-| `scripts/dispatch-child-skill.py`   | 子技能调度器（★ v3.0 统一 Python 调用）          |
+| `scripts/dispatch-child-skill.py`   | 子技能调度器（统一 Python 调用）          |
 | `scheduler/cron-task-definition.md` | 定时任务调度规范（含 cron 表达式、message 模板、降级方案） |
 | `.parent-init-done.json`            | 父技能初始化标记（运行时生成）                      |
 

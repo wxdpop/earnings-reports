@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-跨平台飞书群机器人推送脚本（v5.5.0，全中文交互卡片）
+跨平台飞书群机器人推送脚本（全中文交互卡片）
 
 合并自原 send-feishu.ps1 + send-feishu.sh，单文件覆盖 Windows/Mac/Linux。
 

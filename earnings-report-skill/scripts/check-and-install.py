@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-跨平台环境检查与自动安装脚本（v5.5.1）
+跨平台环境检查与自动安装脚本
 
 特性：
   1. 跨平台：Windows / macOS / Linux 全支持
@@ -9,8 +9,8 @@
   3. 国内 IP 检测：自动识别中国大陆 IP，优先使用镜像源加速安装
   4. 自动安装：检测到缺失依赖时，交互式确认后自动安装
   5. 镜像加速：npm/pip/Homebrew/apt 均配置国内镜像
-  6. ★ v5.5.1：Python 探测优先级（agent 内置 > 系统 > 安装）+ Windows Store stub 跳过
-  7. ★ v5.5.1：缓存 py_executable 绝对路径，供 dispatch-child-skill.py / LLM 使用
+  6. Python 探测优先级（agent 内置 > 系统 > 安装）+ Windows Store stub 跳过
+  7. 缓存 py_executable 绝对路径，供 dispatch-child-skill.py / LLM 使用
 
 依赖清单（10 项）：
   运行时：Python 3.8+、Node.js 18+、PowerShell 7+
@@ -24,7 +24,7 @@
   python check-and-install.py --install --yes  # 全自动（无需确认）
   python check-and-install.py --china          # 强制使用国内镜像
   python check-and-install.py --fix-config     # 自动创建 config.local.json
-  python check-and-install.py --force-check    # ★ v5.5.1：强制重检（忽略缓存）
+  python check-and-install.py --force-check    # 强制重检（忽略缓存）
 """
 import sys
 import os
@@ -66,9 +66,9 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_ROOT = SCRIPT_DIR.parent
 CONFIG_FILE = SKILL_ROOT / 'config.local.json'
 EXAMPLE_FILE = SKILL_ROOT / 'config.example.json'
-# ★ v5.4.3：缓存按平台分文件，避免跨平台命中错误缓存
+# 缓存按平台分文件，避免跨平台命中错误缓存
 _PLATFORM_TAG = IS_WINDOWS and 'windows' or (IS_MACOS and 'macos' or 'linux')
-CACHE_FILE = SKILL_ROOT / f'.env-check-result.{_PLATFORM_TAG}.json'  # ★ v5.4.3：环境检查结果缓存（按平台分文件）
+CACHE_FILE = SKILL_ROOT / f'.env-check-result.{_PLATFORM_TAG}.json'  # 环境检查结果缓存（按平台分文件）
 
 # 镜像源配置
 MIRRORS = {
@@ -94,11 +94,11 @@ PASS = 'PASS'
 WARN = 'WARN'
 FAIL = 'FAIL'
 
-# ★ v5.5.1：探测到的 Python 可执行文件绝对路径（全局变量，供 save_cache 写入缓存）
+# 探测到的 Python 可执行文件绝对路径（全局变量，供 save_cache 写入缓存）
 # 优先级：sys.executable → agent 内置 → py launcher → python3（跳过 stub）→ python（跳过 stub）
 PYTHON_EXECUTABLE = ''
 
-# ★ v5.5.1：Windows Store「应用执行别名」stub 检测
+# Windows Store「应用执行别名」stub 检测
 # WindowsApps 目录下的 python.exe / python3.exe 通常是 0 字节的占位 stub，
 # 命中时会打开 Microsoft Store 而非真正执行 Python，必须跳过。
 WINAPPS_DIR_CANDIDATES = [
@@ -108,7 +108,7 @@ WINAPPS_DIR_CANDIDATES = [
 
 
 def is_stub_exe(path):
-    """★ v5.5.1：检测路径是否为 Windows Store 0 字节 stub 文件"""
+    """检测路径是否为 Windows Store 0 字节 stub 文件"""
     if not path or not IS_WINDOWS:
         return False
     try:
@@ -129,7 +129,7 @@ def is_stub_exe(path):
 
 def find_agent_python():
     """
-    ★ v5.5.1：探测 TRAE agent 内置 Python（优先于系统 PATH）
+    探测 TRAE agent 内置 Python（优先于系统 PATH）
     返回 (path, version_str) 或 (None, None)
     覆盖 Windows / macOS / Linux 三个平台
     """
@@ -163,7 +163,7 @@ def find_agent_python():
 
 def resolve_python_executable():
     """
-    ★ v5.5.1：解析可用的 Python 可执行文件绝对路径
+    解析可用的 Python 可执行文件绝对路径
     优先级：
       1. sys.executable（当前正在运行 Python，肯定可用）
       2. agent 内置 Python（TRAE 沙箱）
@@ -321,7 +321,7 @@ class Installer:
     def install_python(self):
         """
         安装 Python 3.8+
-        ★ v5.5.1：安装后必须校验 PATH 配置 + 重新探测 + 写入 PYTHON_EXECUTABLE
+        安装后必须校验 PATH 配置 + 重新探测 + 写入 PYTHON_EXECUTABLE
         """
         global PYTHON_EXECUTABLE
         if IS_WINDOWS:
@@ -340,7 +340,7 @@ class Installer:
             log(f"  Python 安装失败: {err}", 'ERROR')
             return False
 
-        # ★ v5.5.1：安装后 PATH 校验（关键）
+        # 安装后 PATH 校验（关键）
         # winget/brew/apt 安装后可能需要重启终端才能让 PATH 生效，
         # 此处主动刷新 PATH 并重新探测
         log("  校验 Python PATH 配置...", 'INFO')
@@ -371,7 +371,7 @@ class Installer:
 
     def _refresh_path_env(self):
         """
-        ★ v5.5.1：刷新当前进程的 PATH 环境变量
+        刷新当前进程的 PATH 环境变量
         Windows: 从注册表读取 Machine + User PATH 重新拼接
         macOS/Linux: 重新读取 /etc/paths + ~/.profile
         """
@@ -396,7 +396,7 @@ class Installer:
 
     def _fallback_find_installed_python(self):
         """
-        ★ v5.5.1：PATH 未生效时从已知安装路径 fallback 查找 Python
+        PATH 未生效时从已知安装路径 fallback 查找 Python
         返回路径字符串或 None
         """
         candidates = []
@@ -569,7 +569,7 @@ export HOMEBREW_CORE_GIT_REMOTE="{MIRRORS['homebrew_core']}"
 def check_python():
     """
     检查 Python 3.8+
-    ★ v5.5.1：使用 resolve_python_executable() 优先探测 agent 内置 Python，
+    使用 resolve_python_executable() 优先探测 agent 内置 Python，
                 跳过 Windows Store 0 字节 stub，写入全局 PYTHON_EXECUTABLE 供缓存使用
     """
     global PYTHON_EXECUTABLE
@@ -690,7 +690,7 @@ def check_wrangler():
 
 def check_powershell():
     """检查 PowerShell 7+"""
-    # ★ v5.4.3：Linux/Mac 平台 PowerShell 为可选项，不阻断流程
+    # Linux/Mac 平台 PowerShell 为可选项，不阻断流程
     if IS_LINUX or IS_MACOS:
         pwsh = which('pwsh')
         if pwsh:
@@ -717,7 +717,7 @@ def check_config():
         return FAIL, '配置文件和模板都不存在', ''
     try:
         content = CONFIG_FILE.read_text(encoding='utf-8')
-        # ★ v5.5.4 占位符检测扩展为 5 项（补齐 cloudflare 2 项）
+        # 占位符检测扩展为 5 项（补齐 cloudflare 2 项）
         placeholders = [
             '<your-feishu-webhook-url>',
             '<your-finnhub-api-key>',
@@ -743,7 +743,7 @@ def check_git_repo():
             git_repo = cfg.get('paths', {}).get('repo_dir', '')
         except:
             pass
-    # ★ v5.5.3：输出/仓库目录不从技能安装路径推断，必须由用户在 config.local.json 显式配置
+    # 输出/仓库目录不从技能安装路径推断，必须由用户在 config.local.json 显式配置
     if not git_repo:
         return FAIL, (
             'paths.repo_dir 未配置。请在 config.local.json 的 paths.repo_dir 填写 git 仓库根目录'
@@ -832,7 +832,7 @@ def print_results(results):
 
 
 def install_missing(results, auto_yes=False, installer=None):
-    """安装缺失依赖（★ v5.4.1：检测到缺失即自动安装，无需用户确认）"""
+    """安装缺失依赖（检测到缺失即自动安装，无需用户确认）"""
     if installer is None:
         installer = Installer()
 
@@ -855,7 +855,7 @@ def install_missing(results, auto_yes=False, installer=None):
         print(f"  {i}. {name}")
     print()
 
-    # ★ v5.4.1：移除交互确认，检测到缺失即自动安装
+    # 移除交互确认，检测到缺失即自动安装
     # （auto_yes 参数保留兼容，但默认行为已改为自动安装）
 
     # 按顺序安装（Python → Node → 其他，因为 wrangler 依赖 Node）
@@ -900,7 +900,7 @@ def fix_config():
 
 
 def load_cache():
-    """★ v5.5.0：加载环境检查结果缓存（永久有效，直到依赖变更或手动清除）"""
+    """加载环境检查结果缓存（永久有效，直到依赖变更或手动清除）"""
     if not CACHE_FILE.exists():
         return None
     try:
@@ -917,7 +917,7 @@ def load_cache():
 
 
 def save_cache(results):
-    """★ v5.5.0：保存环境检查结果到缓存文件（仅全部 PASS 时保存）"""
+    """保存环境检查结果到缓存文件（仅全部 PASS 时保存）"""
     fail_n = sum(1 for r in results if r[1] == FAIL)
     if fail_n > 0:
         return  # 有失败项不缓存
@@ -926,7 +926,7 @@ def save_cache(results):
             'check_time': time.strftime('%Y-%m-%dT%H:%M:%S'),
             'platform': f'{PLATFORM_NAME} {platform.release()}',
             'all_pass': True,
-            # ★ v5.5.1：缓存探测到的 Python 绝对路径，供 dispatch-child-skill.py / LLM 调用使用
+            # 缓存探测到的 Python 绝对路径，供 dispatch-child-skill.py / LLM 调用使用
             'py_executable': PYTHON_EXECUTABLE,
             'results': [
                 {'name': r[0], 'status': r[1], 'message': r[2]}
@@ -944,23 +944,23 @@ def save_cache(results):
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description='跨平台环境检查与自动安装（v5.5.0）')
-    parser.add_argument('--install', action='store_true', help='自动安装缺失依赖（v5.4.1 后默认自动安装，保留兼容）')
-    parser.add_argument('--yes', '-y', action='store_true', help='全自动（无需确认，v5.4.1 后默认自动，保留兼容）')
+    parser = argparse.ArgumentParser(description='跨平台环境检查与自动安装')
+    parser.add_argument('--install', action='store_true', help='自动安装缺失依赖（后默认自动安装，保留兼容）')
+    parser.add_argument('--yes', '-y', action='store_true', help='全自动（无需确认，后默认自动，保留兼容）')
     parser.add_argument('--china', action='store_true', help='强制使用国内镜像')
     parser.add_argument('--fix-config', action='store_true', help='自动创建 config.local.json')
     parser.add_argument('--no-parallel', action='store_true', help='禁用并行检查（调试用）')
     parser.add_argument('--skip-check', action='store_true', help='跳过检查（仅安装，配合 --install）')
-    parser.add_argument('--force-check', action='store_true', help='★ v5.5.0：强制重新检查（忽略缓存）')
+    parser.add_argument('--force-check', action='store_true', help='强制重新检查（忽略缓存）')
     args = parser.parse_args()
 
     print(f"{Color.BOLD}{'='*60}{Color.RESET}")
-    print(f"{Color.BOLD}  earnings-report skill 环境检查与自动安装（v5.5.0）{Color.RESET}")
+    print(f"{Color.BOLD}  earnings-report skill 环境检查与自动安装{Color.RESET}")
     print(f"{Color.BOLD}{'='*60}{Color.RESET}")
     print(f"{Color.GRAY}平台: {PLATFORM_NAME} {platform.release()}{Color.RESET}")
     print(f"{Color.GRAY}Skill 目录: {SKILL_ROOT}{Color.RESET}")
 
-    # ★ v5.5.0：检查缓存（永久有效，--force-check 可忽略）
+    # 检查缓存（永久有效，--force-check 可忽略）
     if not args.force_check and not args.fix_config and not args.skip_check:
         cached = load_cache()
         if cached:
@@ -1005,7 +1005,7 @@ def main():
         log(f'检查完成，耗时 {elapsed:.1f}s', 'INFO')
         fail_n, warn_n = print_results(results)
 
-        # 自动安装（★ v5.4.1：检测到缺失即自动安装，无需 --install 参数）
+        # 自动安装（检测到缺失即自动安装，无需 --install 参数）
         if fail_n > 0 or warn_n > 0:
             install_missing(results, auto_yes=True, installer=installer)
             # 安装后重新检查一次，确认结果
@@ -1020,7 +1020,7 @@ def main():
             log(f'仍存在 {fail_n} 项未通过，请手动处理', 'WARN')
             sys.exit(1)
         else:
-            # ★ v5.5.0：全部通过，保存缓存
+            # 全部通过，保存缓存
             save_cache(results)
     else:
         # 仅安装模式

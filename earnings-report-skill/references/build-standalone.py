@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-跨平台单文件构建脚本（v5.5.0）
+跨平台单文件构建脚本
 
 合并自原 build-standalone.ps1 + build-standalone.sh，单文件覆盖 Windows/Mac/Linux。
 
@@ -95,13 +95,13 @@ def get_nested(obj, *keys, default=''):
 
 
 def resolve_output_dir(arg_output_dir, config):
-    """解析输出目录优先级：参数 → config.paths.output_dir → 抛错（★ v5.5.3 移除硬编码兜底）"""
+    """解析输出目录优先级：参数 → config.paths.output_dir → 抛错（移除硬编码兜底）"""
     if arg_output_dir:
         return arg_output_dir
     cfg_output = get_nested(config, 'paths', 'output_dir')
     if cfg_output:
         return cfg_output
-    # ★ v5.5.3：输出目录不在技能安装路径推断，必须由用户在 config.local.json 显式配置
+    # 输出目录不在技能安装路径推断，必须由用户在 config.local.json 显式配置
     raise RuntimeError(
         "paths.output_dir 未配置。请在 config.local.json 的 paths.output_dir 填写输出根目录"
         "（如 d:/TraeAutomaticTools/Output/stock-financial-reports），或通过 --output-dir 参数传入。"
@@ -162,7 +162,7 @@ def main():
         log(f"[错误] 找不到文件: {charts_path}", 'ERROR')
         sys.exit(1)
 
-    log(f"正在构建单文件报告 (v5.5.0 跨平台版): {report_name}", 'CYAN')
+    log(f"正在构建单文件报告 (跨平台版): {report_name}", 'CYAN')
     log(f"  源目录: {source_dir}", 'GRAY')
     log(f"  HTML:   {html_path}", 'GRAY')
     log(f"  输出到: {output_file}", 'GRAY')

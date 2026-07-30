@@ -40,7 +40,7 @@ SKILL 自动监控公司库并生成的上市公司财报深度分析报告，�
     ↓
 步骤 1：加载父技能配置
     ↓
-步骤 2：★ 信息收集前置（★ v3.2.3 起由子技能 collect-user-info.py 代理收集 6 项）
+步骤 2：★ 信息收集前置（由子技能 collect-user-info.py 代理收集 6 项）
     │   工作根目录 + 调度间隔 + API Key + Webhook + 公司库 + 部署方案
     ↓
 步骤 3：Python 前提项检测 + LLM 自动安装
@@ -249,7 +249,7 @@ python "{skill_dir}/references/verify-headless.py" "{repo_dir}/reports/TSLA/tsla
 AI 会按 11 步流程自动完成：
 
 1. **加载父技能配置**：基于当前技能安装路径推断 `parent_skill_dir`、`child_skill_dir`
-2. **★ 信息收集前置**（★ v3.2.3 起由子技能 `collect-user-info.py --mode proxy` 代理收集 6 项）：
+2. **★ 信息收集前置**（由子技能 `collect-user-info.py --mode proxy` 代理收集 6 项）：
    - 调用子技能脚本输出弹窗规范 JSON → LLM 执行 AskUserQuestion → 回传答案 → 脚本写入父技能 config.local.json
    - 收集项：工作根目录 / 调度间隔 / API Key 状态 / 飞书 Webhook / 公司库导入方案 / 部署方案
 3. **Python 前提项检测 + LLM 自动安装**：检测到 Python 不存在时直接调用 winget/brew/apt 安装
@@ -262,7 +262,7 @@ AI 会按 11 步流程自动完成：
 10. **★ 自动创建定时任务**：通过 TRAE `Schedule` 工具创建（cron 从父技能 config.local.json 的 `schedule.cron` 读取）
 11. **输出初始化完成摘要**
 
-#### 定时任务调度行为（★ v3.1 静默规则）
+#### 定时任务调度行为（静默规则）
 
 定时任务触发后，默认静默运行，仅在特定情况输出：
 
@@ -298,8 +298,8 @@ AI 会按 11 步流程自动完成：
 | `config.example.json` | 模板文件，含占位符和说明 | ✅ 提交（已脱敏） |
 | `config.local.json` | 真实配置文件 | ❌ 不提交（.gitignore 排除） |
 
-- **唯一入口**：`config.local.json`（★ v5.5.0 起不再支持环境变量，降低复杂性）
-- **★ 信息收集入口**（v3.2.3/v5.5.4 起）：统一由子技能 `collect-user-info.py` 代理（standalone 模式独立收集，proxy 模式被父技能调用写入父技能 config）
+- **唯一入口**：`config.local.json`（不再支持环境变量，降低复杂性）
+- **★ 信息收集入口**：统一由子技能 `collect-user-info.py` 代理（standalone 模式独立收集，proxy 模式被父技能调用写入父技能 config）
 - **父技能配置文件**：`{parent_skill_dir}/config.local.json`（由子技能 `collect-user-info.py --mode proxy` 写入）
 - **子技能配置文件**：`{child_skill_dir}/config.local.json`（父技能初始化步骤 7 父→子复制同步）
 
@@ -449,7 +449,7 @@ earnings-reports/                                  # GitHub 仓库根
 │   ├── HOOD/                                      # Robinhood
 │   └── NBIS/                                      # Nebius Group
 ├── earnings-report-skill/                         # ★ 子技能源码（执行层，可独立使用）
-│   ├── SKILL.md                                   # 技能主配置文件（v5.5.3）
+│   ├── SKILL.md                                   # 技能主配置文件
 │   ├── README.md                                  # 子技能文档
 │   ├── config.example.json                        # 配置文件模板（已脱敏，提交到 git）
 │   ├── config.local.json                          # 真实配置（★ 被 .gitignore 排除，不提交）
@@ -468,7 +468,7 @@ earnings-reports/                                  # GitHub 仓库根
 │   └── templates/
 │       └── sections-reference.md                  # 各 section 必需子元素规范
 ├── earnings-report-orchestrator-skill/            # ★ 父技能源码（编排层，依赖子技能）
-│   ├── SKILL.md                                   # 父技能主配置文件（v3.2.1）
+│   ├── SKILL.md                                   # 父技能主配置文件
 │   ├── config.example.json                        # 父技能配置模板
 │   ├── config.local.json                          # 父技能真实配置（.gitignore 排除）
 │   ├── company-library.json                       # ★ 公司库数据（核心数据，可提交）

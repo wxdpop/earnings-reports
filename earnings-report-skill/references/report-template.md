@@ -13,7 +13,7 @@
   --font-title: 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-body: 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-mono: 'Consolas', 'Monaco', 'Courier New', monospace;
-  --maxw: 1200px; /* ★ v5.4.3：布局加宽，原 1000px */
+  --maxw: 1200px; /* 布局加宽，原 1000px */
   --radius: 14px;
   --shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06);
 }
@@ -84,7 +84,7 @@ header.report-head .meta {
 .toc {
   background: var(--bg2);
   border-right: 1px solid var(--rule);
-  width: 160px; /* ★ v5.4.3：TOC 收窄，原 180px */
+  width: 160px; /* TOC 收窄，原 180px */
   flex-shrink: 0;
   position: sticky;
   top: 0;
@@ -213,7 +213,7 @@ section p.lead { font-size: 17px; color: var(--muted); font-weight: 300; }
   transition: transform 0.2s, box-shadow 0.2s;
 }
 .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
-/* ★ v5.4.2：长类名兼容（.stat-value/.stat-label/.stat-delta 与 .v/.l/.d 等效） */
+/* 长类名兼容（.stat-value/.stat-label/.stat-delta 与 .v/.l/.d 等效） */
 .stat-card .v, .stat-card .stat-value {
   font-family: var(--font-mono);
   font-size: 1.4rem;

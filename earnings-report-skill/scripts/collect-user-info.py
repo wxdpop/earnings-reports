@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-collect-user-info.py — 用户信息收集主入口（★ v5.5.4 新增）
+collect-user-info.py — 用户信息收集主入口
 
-将原本散落在父技能 SKILL.md 步骤 2/6/6.5 的信息收集逻辑下沉到子技能侧，
-由子技能统一承载，父技能和子技能均可代理调用此收集流程。
+将信息收集逻辑下沉到子技能侧，由子技能统一承载，
+父技能和子技能均可代理调用此收集流程。
 
 ## 调用模式
 
-### standalone 模式（子技能独立使用）
+### standalone 模式（子技能独立使用，不收集调度间隔）
     python collect-user-info.py --mode standalone
 
-### proxy 模式（被父技能调用代理收集）
+### proxy 模式（被父技能调用代理收集，含调度间隔）
     python collect-user-info.py --mode proxy --parent-config <父技能 config.local.json 路径>
 
 ## 两阶段调用协议
 
 阶段 A（无 --answers 参数）：
-    脚本输出 6 项弹窗规范 JSON 到 stdout，LLM 按规范执行 AskUserQuestion，
-    将答案组装为 answers.json 文件。
+    脚本输出弹窗规范 JSON 到 stdout（standalone 5 项 / proxy 6 项），
+    LLM 按规范执行 AskUserQuestion，将答案组装为 answers.json 文件。
 
 阶段 B（带 --answers <path> 参数）：
     脚本读取 answers.json，写入 config.local.json（standalone 写子技能；proxy 写父技能），
@@ -42,7 +42,7 @@ SKILL_ROOT = Path(__file__).resolve().parent.parent  # earnings-report-skill/
 CHILD_CONFIG = SKILL_ROOT / 'config.local.json'
 CHILD_EXAMPLE = SKILL_ROOT / 'config.example.json'
 
-# ===== 占位符检测清单（5 项，★ v5.5.4 补齐 cloudflare 2 项） =====
+# ===== 占位符检测清单（5 项） =====
 PLACEHOLDERS = [
     ('feishu.webhook_url', '<your-feishu-webhook-url>'),
     ('finnhub.api_key', '<your-finnhub-api-key>'),
@@ -122,77 +122,82 @@ def check_gh_auth_status():
 
 
 def build_dialogs_spec(mode):
-    """阶段 A：构建 6 项弹窗规范 JSON"""
+    """阶段 A：构建弹窗规范 JSON（standalone 5 项 / proxy 6 项）"""
+    dialogs = [
+        {
+            'dialog_id': 'dialog_0_workroot',
+            'collect_item': '工作根目录（输出目录定位）',
+            'field_mapping': ['paths.output_dir', 'paths.repo_dir'],
+            'description': '用于填写 config.local.json 的 paths.output_dir 和 paths.repo_dir，与技能安装目录无关',
+            'options': [
+                {'label': '使用当前工作目录（推荐）', 'value': '__cwd__', 'hint': '自动获取当前工作目录作为工作根目录'},
+                {'label': '手动输入工作根目录', 'value': '__user_input__', 'hint': '用户打字输入绝对路径，如 d:\\TraeAutomaticTools 或 ~/projects'}
+            ],
+            'value_transform': '若选 __cwd__，output_dir = <cwd>/Output/stock-financial-reports，repo_dir 同 output_dir；若选 __user_input__，output_dir = <用户输入>/Output/stock-financial-reports，repo_dir 同 output_dir'
+        },
+        {
+            'dialog_id': 'dialog_1_schedule',
+            'collect_item': '调度间隔选择',
+            'field_mapping': ['schedule.cron'],
+            'options': [
+                {'label': '每 12 小时（推荐）', 'value': '0 0,12 * * *'},
+                {'label': '每 6 小时', 'value': '0 0,6,12,18 * * *'},
+                {'label': '每 24 小时', 'value': '0 0 * * *'},
+                {'label': '每 10 分钟（最小粒度）', 'value': '*/10 * * * *'}
+            ]
+        },
+        {
+            'dialog_id': 'dialog_2_api_key',
+            'collect_item': 'API Key 状态',
+            'field_mapping': ['finnhub.api_key', 'alphavantage.api_key'],
+            'options': [
+                {'label': '已有 Finnhub + Alpha Vantage API Key', 'value': 'have_both'},
+                {'label': '需注册 Finnhub API Key', 'value': 'need_finnhub', 'hint': 'https://finnhub.io/register'},
+                {'label': '需注册 Alpha Vantage API Key', 'value': 'need_alphavantage', 'hint': 'https://www.alphavantage.support/free-api-key'},
+                {'label': '需注册两个 API Key', 'value': 'need_both', 'hint': 'https://finnhub.io/register 和 https://www.alphavantage.support/free-api-key'}
+            ]
+        },
+        {
+            'dialog_id': 'dialog_3_feishu',
+            'collect_item': '飞书 Webhook 状态',
+            'field_mapping': ['feishu.webhook_url'],
+            'options': [
+                {'label': '已有飞书 Webhook URL', 'value': 'have_webhook'},
+                {'label': '需配置飞书群机器人', 'value': 'need_config', 'hint': '飞书群 → 设置 → 群机器人 → 添加自定义机器人'},
+                {'label': '跳过飞书推送', 'value': 'skip', 'hint': '不配置 Webhook，子技能阶段 9 飞书推送将被跳过'}
+            ]
+        },
+        {
+            'dialog_id': 'dialog_4_company_library',
+            'collect_item': '公司库导入方案',
+            'field_mapping': ['__company_library_choice__'],
+            'options': [
+                {'label': '导入美股 7 巨头（推荐）', 'value': 'mag7', 'tickers': COMPANY_PRESETS['mag7']},
+                {'label': '美股 7 巨头 + 阿里巴巴', 'value': 'mag7_baba', 'tickers': COMPANY_PRESETS['mag7_baba']},
+                {'label': '中概股龙头', 'value': 'china', 'tickers': COMPANY_PRESETS['china']},
+                {'label': '手动输入 ticker 列表', 'value': 'custom', 'hint': '用户打字输入，如 "NVDA, TSLA, AMD"'},
+                {'label': '跳过，稍后手动添加', 'value': 'skip', 'tickers': []}
+            ]
+        },
+        {
+            'dialog_id': 'dialog_5_deployment',
+            'collect_item': '部署方案选择',
+            'field_mapping': ['deployment.targets', 'deployment.github.enabled'],
+            'options': [
+                {'label': '仅 Cloudflare Pages（推荐默认）', 'value': 'cloudflare_only', 'targets': ['cloudflare'], 'github_enabled': False},
+                {'label': 'Cloudflare + GitHub 双节点', 'value': 'cloudflare_github', 'targets': ['cloudflare', 'github'], 'github_enabled': True}
+            ],
+            'constraint': 'Cloudflare 始终必选（不可关闭）；GitHub 为可选项，默认不启用'
+        }
+    ]
+    # standalone 模式不收集调度间隔（子技能无定时调度任务环节）
+    if mode == 'standalone':
+        dialogs = [d for d in dialogs if d['dialog_id'] != 'dialog_1_schedule']
     return {
         'status': 'collect_required',
         'mode': mode,
-        'dialogs': [
-            {
-                'dialog_id': 'dialog_0_workroot',
-                'collect_item': '工作根目录（输出目录定位）',
-                'field_mapping': ['paths.output_dir', 'paths.repo_dir'],
-                'description': '用于填写 config.local.json 的 paths.output_dir 和 paths.repo_dir，与技能安装目录无关',
-                'options': [
-                    {'label': '使用当前工作目录（推荐）', 'value': '__cwd__', 'hint': '自动获取当前工作目录作为工作根目录'},
-                    {'label': '手动输入工作根目录', 'value': '__user_input__', 'hint': '用户打字输入绝对路径，如 d:\\TraeAutomaticTools 或 ~/projects'}
-                ],
-                'value_transform': '若选 __cwd__，output_dir = <cwd>/Output/stock-financial-reports，repo_dir 同 output_dir；若选 __user_input__，output_dir = <用户输入>/Output/stock-financial-reports，repo_dir 同 output_dir'
-            },
-            {
-                'dialog_id': 'dialog_1_schedule',
-                'collect_item': '调度间隔选择',
-                'field_mapping': ['schedule.cron'],
-                'options': [
-                    {'label': '每 12 小时（推荐）', 'value': '0 0,12 * * *'},
-                    {'label': '每 6 小时', 'value': '0 0,6,12,18 * * *'},
-                    {'label': '每 24 小时', 'value': '0 0 * * *'},
-                    {'label': '每 10 分钟（最小粒度）', 'value': '*/10 * * * *'}
-                ]
-            },
-            {
-                'dialog_id': 'dialog_2_api_key',
-                'collect_item': 'API Key 状态',
-                'field_mapping': ['finnhub.api_key', 'alphavantage.api_key'],
-                'options': [
-                    {'label': '已有 Finnhub + Alpha Vantage API Key', 'value': 'have_both'},
-                    {'label': '需注册 Finnhub API Key', 'value': 'need_finnhub', 'hint': 'https://finnhub.io/register'},
-                    {'label': '需注册 Alpha Vantage API Key', 'value': 'need_alphavantage', 'hint': 'https://www.alphavantage.support/free-api-key'},
-                    {'label': '需注册两个 API Key', 'value': 'need_both', 'hint': 'https://finnhub.io/register 和 https://www.alphavantage.support/free-api-key'}
-                ]
-            },
-            {
-                'dialog_id': 'dialog_3_feishu',
-                'collect_item': '飞书 Webhook 状态',
-                'field_mapping': ['feishu.webhook_url'],
-                'options': [
-                    {'label': '已有飞书 Webhook URL', 'value': 'have_webhook'},
-                    {'label': '需配置飞书群机器人', 'value': 'need_config', 'hint': '飞书群 → 设置 → 群机器人 → 添加自定义机器人'},
-                    {'label': '跳过飞书推送', 'value': 'skip', 'hint': '不配置 Webhook，子技能阶段 9 飞书推送将被跳过'}
-                ]
-            },
-            {
-                'dialog_id': 'dialog_4_company_library',
-                'collect_item': '公司库导入方案',
-                'field_mapping': ['__company_library_choice__'],
-                'options': [
-                    {'label': '导入美股 7 巨头（推荐）', 'value': 'mag7', 'tickers': COMPANY_PRESETS['mag7']},
-                    {'label': '美股 7 巨头 + 阿里巴巴', 'value': 'mag7_baba', 'tickers': COMPANY_PRESETS['mag7_baba']},
-                    {'label': '中概股龙头', 'value': 'china', 'tickers': COMPANY_PRESETS['china']},
-                    {'label': '手动输入 ticker 列表', 'value': 'custom', 'hint': '用户打字输入，如 "NVDA, TSLA, AMD"'},
-                    {'label': '跳过，稍后手动添加', 'value': 'skip', 'tickers': []}
-                ]
-            },
-            {
-                'dialog_id': 'dialog_5_deployment',
-                'collect_item': '部署方案选择',
-                'field_mapping': ['deployment.targets', 'deployment.github.enabled'],
-                'options': [
-                    {'label': '仅 Cloudflare Pages（推荐默认）', 'value': 'cloudflare_only', 'targets': ['cloudflare'], 'github_enabled': False},
-                    {'label': 'Cloudflare + GitHub 双节点', 'value': 'cloudflare_github', 'targets': ['cloudflare', 'github'], 'github_enabled': True}
-                ],
-                'constraint': 'Cloudflare 始终必选（不可关闭）；GitHub 为可选项，默认不启用'
-            }
-        ]
+        'dialog_count': len(dialogs),
+        'dialogs': dialogs
     }
 
 

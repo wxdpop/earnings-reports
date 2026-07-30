@@ -34,7 +34,7 @@
     ↓
 阶段 -1：环境检查（首次/变更时）→ check-and-install.py
     ↓
-阶段 -1.5：★ 用户信息收集（v5.5.4 新增）→ collect-user-info.py
+阶段 -1.5：★ 用户信息收集 → collect-user-info.py
     ↓
 阶段 0：解析输入（公司名/季度/本位币）
     ↓
@@ -52,7 +52,7 @@
     ↓
 阶段 6：无头浏览器验证（verify-headless.py，Chrome headless）
     ↓
-阶段 7-9：并行执行（★ v5.4.4 起）
+阶段 7-9：并行执行
     ├─ 阶段 7：资源清理
     ├─ 阶段 8：部署（Cloudflare 必选 + GitHub 可选）
     └─ 阶段 9：飞书群推送（全中文交互卡片）
@@ -199,7 +199,7 @@ python "{skill_dir}/references/send-feishu.py" \
 
 ### 配置文件加载策略
 
-- **唯一入口**：`config.local.json`（★ v5.5.0 起不再支持环境变量，降低复杂性）
+- **唯一入口**：`config.local.json`（不再支持环境变量，降低复杂性）
 - **模板文件**：`config.example.json`（已脱敏，提交到 git）
 - **真实配置**：`config.local.json`（被 `.gitignore` 排除，不提交）
 
@@ -216,7 +216,7 @@ cp "<skill_dir>/config.example.json" "<skill_dir>/config.local.json"
 python "<skill_dir>/scripts/check-and-install.py" --fix-config
 ```
 
-### ★ 信息收集流程（v5.5.4 新增）
+### ★ 信息收集流程
 
 除了手动编辑 config.local.json，还可通过 `collect-user-info.py` 引导收集配置：
 
@@ -311,7 +311,7 @@ python "<skill_dir>/scripts/check-and-install.py"
 
 ```
 earnings-report-skill/
-├── SKILL.md                          # 技能主配置文件（工作流程定义，v5.5.3）
+├── SKILL.md                          # 技能主配置文件（工作流程定义）
 ├── README.md                         # 本文档
 ├── config.example.json               # 配置模板（已脱敏，提交到 git）
 ├── config.local.json                 # 真实配置（★ 被 .gitignore 排除，不提交）
@@ -336,7 +336,7 @@ earnings-report-skill/
 ### 生成的报告目录结构（在用户工作空间的 git 仓库下，非 skill 目录）
 
 ```
-<工作根目录>/Output/stock-financial-reports/    # ★ v5.5.3 用户工作空间
+<工作根目录>/Output/stock-financial-reports/    # 用户工作空间
 ├── reports/{TICKER}/                  # 最终 HTML 统一存放点（按公司股票代码大写分文件夹）
 │   └── {company-slug}-{quarter}-earnings.html
 └── data/{symbol}-{quarter}/           # API 数据（供调试，阶段 7 自动清理）
@@ -480,7 +480,7 @@ earnings-report-skill/
 
 ---
 
-## ★ 跨平台脚本统一入口（★ v5.5.0）
+## ★ 跨平台脚本统一入口
 
 **所有脚本统一为 Python 3 单文件入口**（Windows/Mac/Linux 通用），不再提供 .ps1/.sh 双版本。
 
@@ -532,7 +532,7 @@ earnings-report-skill/
 ## ★ 脱敏检查规范
 
 - **严禁硬编码**：飞书 Webhook URL、API 密钥、Token 等敏感信息
-- **传入方式**：`config.local.json`（★ v5.5.0 唯一入口，被 `.gitignore` 排除）
+- **传入方式**：`config.local.json`（唯一入口，被 `.gitignore` 排除）
 - **配置字段**：`feishu.webhook_url`、`finnhub.api_key`、`alphavantage.api_key`、`paths.output_dir`、`paths.repo_dir`（均为嵌套结构）
 - **`config.local.json` 必须被 `.gitignore` 排除**，仅提交 `config.example.json` 模板
 - **提交前自查**：

@@ -10,7 +10,7 @@ config/local.json
 *.tmp
 *.bak
 
-# 环境检查结果缓存（v5.4.3，按平台分文件，本地文件，不应提交）
+# 环境检查结果缓存（按平台分文件，本地文件，不应提交）
 **/.env-check-result.json
 **/.env-check-result.*.json
 

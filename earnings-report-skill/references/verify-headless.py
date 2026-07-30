@@ -1,4 +1,4 @@
-"""无头浏览器验证脚本 v5.5.0 — 使用 Chrome headless screenshot + HTML结构双重验证（跨平台）"""
+"""无头浏览器验证脚本 — 使用 Chrome headless screenshot + HTML结构双重验证（跨平台）"""
 import subprocess
 import sys
 import os
@@ -10,7 +10,7 @@ import tempfile
 import platform
 
 def find_chrome():
-    """跨平台查找 Chrome 浏览器（v5.3：仅支持 Chrome，不支持 Edge）"""
+    """跨平台查找 Chrome 浏览器（仅支持 Chrome，不支持 Edge）"""
     paths = []
 
     # Windows 路径

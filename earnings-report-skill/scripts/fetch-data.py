@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-跨平台 API 数据拉取脚本（v5.5.0）
+跨平台 API 数据拉取脚本
 
 合并自原 fetch-data.ps1 + fetch-data.sh，使用 urllib 实现 HTTP 请求，
 单文件覆盖 Windows/Mac/Linux。
@@ -103,13 +103,13 @@ def get_nested(obj, *keys, default=''):
 
 
 def resolve_output_dir(arg_out_dir, config):
-    """解析输出目录优先级：参数 → config.paths.output_dir → 抛错（★ v5.5.3 移除硬编码兜底）"""
+    """解析输出目录优先级：参数 → config.paths.output_dir → 抛错（移除硬编码兜底）"""
     if arg_out_dir:
         return arg_out_dir
     cfg_output = get_nested(config, 'paths', 'output_dir')
     if cfg_output:
         return os.path.join(cfg_output, 'data')
-    # ★ v5.5.3：输出目录不在技能安装路径推断，必须由用户在 config.local.json 显式配置
+    # 输出目录不在技能安装路径推断，必须由用户在 config.local.json 显式配置
     raise RuntimeError(
         "paths.output_dir 未配置。请在 config.local.json 的 paths.output_dir 填写输出根目录"
         "（如 d:/TraeAutomaticTools/Output/stock-financial-reports），或通过 --out-dir 参数传入。"

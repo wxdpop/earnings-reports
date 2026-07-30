@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-财务数据解析工具（v5.4.4）
+财务数据解析工具
 
 功能：解析 fetch-data 拉取的 JSON 文件，输出完整财务数据摘要。
       供 LLM 生成 sections JSON 时直接使用，避免临时脚本。

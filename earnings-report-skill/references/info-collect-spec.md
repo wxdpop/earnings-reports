@@ -10,7 +10,7 @@
 
 ```
 阶段 A（无 --answers 参数）：
-    脚本输出 6 项弹窗规范 JSON → LLM 按规范执行 AskUserQuestion → 组装 answers.json
+    脚本输出弹窗规范 JSON（standalone 5 项 / proxy 6 项）→ LLM 按规范执行 AskUserQuestion → 组装 answers.json
 
 阶段 B（带 --answers 参数）：
     脚本读取 answers.json → 写入 config.local.json → 输出最终状态 JSON
@@ -18,14 +18,16 @@
 
 **两种调用模式**：
 
-| 模式 | 调用方 | 写入目标 | 适用场景 |
-|---|---|---|---|
-| `standalone` | 子技能自身 | 子技能 config.local.json | 子技能独立使用 |
-| `proxy` | 父技能调用 | 父技能 config.local.json | 父技能初始化时代理收集 |
+| 模式 | 调用方 | 写入目标 | 弹窗数量 | 适用场景 |
+|---|---|---|---|---|
+| `standalone` | 子技能自身 | 子技能 config.local.json | 5 项（不含调度间隔） | 子技能独立使用 |
+| `proxy` | 父技能调用 | 父技能 config.local.json | 6 项（含调度间隔） | 父技能初始化时代理收集 |
+
+> **约束**：子技能无定时调度任务环节，`standalone` 模式不收集调度间隔（弹窗 1）；`proxy` 模式由父技能代理时才收集调度间隔并写入父技能 config 的 `schedule` 字段。
 
 ---
 
-## 二、6 项弹窗规范
+## 二、弹窗规范（standalone 5 项 / proxy 6 项）
 
 ### 弹窗 0：工作根目录（输出目录定位）
 
@@ -246,7 +248,7 @@
 | `schedule_cron` | 步骤 10 | 创建定时任务的 cron 表达式 |
 | `schedule_timezone` | 步骤 10 | 创建定时任务的时区 |
 | `placeholders_remaining` | 步骤 6 | 引导用户编辑 config 的依据 |
-| `cloudflare_configured` | 步骤 9 | 写入 `.parent-init-done.json` 的 `cloudflare_configured` 标记 |
+| `cloudflare_configured` | 步骤 6.5/9 | 步骤 6.5 判断是否需要引导 Cloudflare 配置；步骤 9 写入 `.parent-init-done.json` 标记 |
 | `github_login_required` | 步骤 6.5 | 决定是否执行 GitHub 登录引导 |
 | `github_login_status` | 步骤 6.5/9 | 决定是否执行 `gh auth login`，写入 `github_logged_in` 标记 |
 | `next_actions` | 步骤 6/6.5 | 引导用户后续操作的动作清单 |
