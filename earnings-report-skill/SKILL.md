@@ -21,9 +21,9 @@ description: "自动生成上市公司最新财报深度分析HTML报告（含�
 
 | 项 | 值 | 目录类型 |
 |---|---|---|
-| GitHub 仓库 | `wxdpop/earnings-reports`（可选，deployment.targets 含 github 时启用） | — |
-| GitHub Pages URL | `https://wxdpop.github.io/earnings-reports/reports/{TICKER}/{filename}.html`（可选备用） | — |
-| Cloudflare Pages 项目名 | `earnings-reports`（必选） | — |
+| GitHub 仓库 | `deployment.github.repo`（动态读取，可选，deployment.targets 含 github 时启用） | — |
+| GitHub Pages URL | `https://{github-user}.github.io/{repo-name}/reports/{TICKER}/{filename}.html`（从 `deployment.github.repo` 推导，可选备用） | — |
+| Cloudflare Pages 项目名 | cloudflare project_name 运行时从 `deployment.github.repo` 仓库名推导，不在配置文件中定义（必选） | — |
 | Cloudflare Pages URL | `https://earnings-reports.pages.dev/reports/{TICKER}/{filename}.html`（★ 主链接，必选） | — |
 | 本地 git 仓库路径 | 用户工作空间：`config.local.json` 的 `paths.repo_dir`，默认 `<工作根目录>/Output/stock-financial-reports`（需为 git 仓库根目录，**不从技能安装路径推断**）| **输出目录** |
 | 输出目录路径 | 用户工作空间：`config.local.json` 的 `paths.output_dir`，默认 `<工作根目录>/Output/stock-financial-reports`（**不从技能安装路径推断**）| **输出目录** |
@@ -151,8 +151,8 @@ python "{skill_dir}/scripts/collect-user-info.py" --mode standalone --check-only
 
 **核心说明**：
 - 采用两阶段调用协议（阶段 A 输出弹窗规范 → LLM 执行 AskUserQuestion → 阶段 B 写入 config）
-- standalone 模式收集 5 项（工作根目录、API Key、飞书 Webhook、公司库导入方案、部署方案），**不收集调度间隔**（子技能无定时调度任务环节）
-- proxy 模式收集 6 项（增加调度间隔，写入父技能 config 的 `schedule` 字段）
+- standalone 模式收集 6 项（工作根目录、API Key、飞书 Webhook、公司库导入方案、部署方案、GitHub 仓库名称→`deployment.github.repo`），**不收集调度间隔**（子技能无定时调度任务环节）；GitHub 仓库名称仅当部署方案选择 cloudflare_github 时收集
+- proxy 模式收集 7 项（增加调度间隔，写入父技能 config 的 `schedule` 字段；GitHub 仓库名称仅当部署方案选择 cloudflare_github 时收集）
 - 脚本不直接调用 AskUserQuestion，通过两阶段调用协议实现跨 Agent 兼容
 - `gh auth login` / `wrangler login` 是系统级交互操作，脚本仅检测状态，实际登录由 LLM 执行
 - **详细规范（弹窗选项、字段映射、占位符检测、字段归属规则、输出 JSON 消费映射）见 [info-collect-spec.md](references/info-collect-spec.md)**
@@ -310,7 +310,7 @@ python "{skill_dir}/references/build-standalone.py" --source-dir "{output_dir}/n
 2. 内联 echarts.min.js 和 charts.js（转义 `</script>` 为 `<\/script>`）
 3. 输出单文件到中间产物路径：输出到 `config.local.json` 的 `paths.output_dir`（用户工作空间，留空时脚本抛错提示用户配置）
 
-**★ 移动到统一存放点**：构建完成后移动到 `{repo_dir}/reports/{TICKER}/{company-slug}-{quarter}-earnings.html`，删除 Output 根目录的中间产物。每个公司目录只保留一个 HTML 文件（不复制 index.html 副本）。
+**★ 移动到统一存放点**：报告输出到 `paths.repo_dir/reports/{TICKER}/`（repo_dir = output_dir，reports 建在仓库文件夹下），最终文件为 `{company-slug}-{quarter}-earnings.html`，删除 Output 根目录的中间产物。每个公司目录只保留一个 HTML 文件（不复制 index.html 副本）。
 
 ### 阶段 6：无头浏览器验证
 
@@ -361,11 +361,11 @@ Chrome 不可用时自动退化为纯 HTML 结构验证（不执行 JS，无法�
 
 **★ 部署策略**：读取 `config.local.json` 的 `deployment.targets` 判断：
 - Cloudflare 始终必选（无条件执行 `wrangler pages deploy`）
-- `deployment.targets` 含 `"github"` → 追加执行 `git push`；不含 → 跳过
+- `deployment.targets` 含 `"github"` → 追加执行 GitHub 部署（依据 `github_repo_action` 选择 init/clone 流程，仓库名称动态读取 `deployment.github.repo`）；不含 → 跳过
 
 **前置条件**：
 - Cloudflare（必选）：wrangler 已授权、Cloudflare Pages 项目 `earnings-reports` 已创建
-- GitHub（可选，仅当 deployment.targets 含 github 时需要）：`gh` 已鉴权（`gh auth status` 检查）、仓库 `wxdpop/earnings-reports` 已启用 Pages
+- GitHub（可选，仅当 deployment.targets 含 github 时需要）：`gh` 已鉴权（`gh auth status` 检查）、仓库 `deployment.github.repo`（动态读取）已启用 Pages
 
 **GitHub Pages**（仅当 deployment.targets 含 github 时执行）：`git push origin main` 后自动触发（1-2 分钟生效）。
 
@@ -375,6 +375,8 @@ Chrome 不可用时自动退化为纯 HTML 结构验证（不执行 JS，无法�
 # Windows
 # repo_dir 从 config.local.json 读取，默认 <工作根目录>/Output/stock-financial-reports（不从技能安装路径推断）
 $repoDir = "<从 config.local.json paths.repo_dir 读取，如 d:\TraeAutomaticTools\Output\earnings-reports>"
+# CF_PROJECT 从 config.local.json deployment.cloudflare.project_name 读取（运行时由 collect-user-info.py 从 github.repo 仓库名推导写入）
+$CF_PROJECT = "<从 config.local.json deployment.cloudflare.project_name 读取，如 stock-financial-reports>"
 $src = "$repoDir\reports"
 $dst = "$repoDir\cf-pages-deploy\reports"
 # 1. 复制 reports/ 到 cf-pages-deploy/reports/（.NET API）
@@ -386,7 +388,7 @@ Get-ChildItem -LiteralPath $src -Recurse | ForEach-Object {
 }
 # 2. 从 cf-pages-deploy 目录部署（★ 切勿直接部署 reports 目录）
 Set-Location "$repoDir\cf-pages-deploy"
-npx --yes wrangler pages deploy . --project-name earnings-reports --branch main --commit-dirty=true
+npx --yes wrangler pages deploy . --project-name "$CF_PROJECT" --branch main --commit-dirty=true
 # 3. 清理临时目录
 [System.IO.Directory]::Delete("$repoDir\cf-pages-deploy", $true)
 ```
@@ -395,18 +397,38 @@ npx --yes wrangler pages deploy . --project-name earnings-reports --branch main 
 # Mac/Linux
 # repo_dir 从 config.local.json 读取，默认 <工作根目录>/Output/stock-financial-reports（不从技能安装路径推断）
 repo_dir="<从 config.local.json paths.repo_dir 读取，如 ~/TraeAutomaticTools/Output/stock-financial-reports>"
+# CF_PROJECT 从 config.local.json deployment.cloudflare.project_name 读取（运行时由 collect-user-info.py 从 github.repo 仓库名推导写入）
+CF_PROJECT="<从 config.local.json deployment.cloudflare.project_name 读取，如 stock-financial-reports>"
 mkdir -p "$repo_dir/cf-pages-deploy/reports"
 cp -r "$repo_dir/reports/." "$repo_dir/cf-pages-deploy/reports/"
 cd "$repo_dir/cf-pages-deploy"
-npx --yes wrangler pages deploy . --project-name earnings-reports --branch main --commit-dirty=true
+npx --yes wrangler pages deploy . --project-name "$CF_PROJECT" --branch main --commit-dirty=true
 rm -rf "$repo_dir/cf-pages-deploy"
 ```
 
 **★ 关键教训**：`wrangler pages deploy <dir>` 会将 `<dir>` 内容上传到 Pages 根目录。直接部署 `reports` 目录会变成 `/NFLX/xxx.html`（错误）；必须从包含 `reports/` 子目录的父目录部署，路径才是 `/reports/NFLX/xxx.html`（正确）。
 
+**GitHub 部署命令**（仅当 deployment.targets 含 github 时执行；分支统一 `main`，仓库可见性 `public`，仓库名称动态读取 `deployment.github.repo`）：
+
+```bash
+# 仓库名称从 config.local.json 的 deployment.github.repo 读取（如 wxdpop/earnings-reports）
+GH_REPO="<从 config.local.json deployment.github.repo 读取>"
+
+# 首次部署（github_repo_action=init）：先创建远程仓库，再首次推送
+gh repo create "$GH_REPO" --public
+git add .
+git commit -m "feat: add earnings report"
+git push -u origin main
+
+# 后续部署（github_repo_action=clone/pull 或已初始化）：直接提交并推送
+git add .
+git commit -m "feat: add earnings report"
+git push
+```
+
 **返回 URL**：
 - Cloudflare（必选主链接）：`https://earnings-reports.pages.dev/reports/{TICKER}/{filename}.html`
-- GitHub（可选备用，仅当 deployment.targets 含 github 时返回）：`https://wxdpop.github.io/earnings-reports/reports/{TICKER}/{filename}.html`
+- GitHub（可选备用，仅当 deployment.targets 含 github 时返回）：`https://{github-user}.github.io/{repo-name}/reports/{TICKER}/{filename}.html`（从 `deployment.github.repo` 推导）
 
 **子代理 C — 阶段9 飞书推送**（统一为 Python 入口）：
 
@@ -455,7 +477,7 @@ Webhook URL 从 config.local.json 的 `feishu.webhook_url`（嵌套结构）加�
 | 功能 | 脚本路径 | 关键参数 | 备注 |
 |------|---------|---------|------|
 | 环境检查+安装 | `scripts/check-and-install.py` | `--china` / `--fix-config` / `--force-check` / `--skip-check` | 内部按平台选择安装命令（winget/brew/apt） |
-| ★ 用户信息收集 | `scripts/collect-user-info.py` | `--mode standalone\|proxy` / `--answers` / `--check-only` | 承载 6 项弹窗收集逻辑 |
+| ★ 用户信息收集 | `scripts/collect-user-info.py` | `--mode standalone\|proxy` / `--answers` / `--check-only` | 承载 7 项弹窗收集逻辑 |
 | API 数据拉取 | `scripts/fetch-data.py` | `--symbol` / `--out-dir` | 完成后自动调用 parse-financial-data.py |
 | 模板填充 | `scripts/fill-template.py` | `--template-file` / `--sections-file` / `--output-file` | 含结构完整性校验 |
 | 单文件构建 | `references/build-standalone.py` | `--source-dir` / `--output-dir` | 使用 Python 字符串 .replace() 精确匹配 |

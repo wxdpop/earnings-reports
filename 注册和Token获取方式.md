@@ -151,7 +151,7 @@
 | 控制台 | https://dash.cloudflare.com/ |
 | API Token 管理 | https://dash.cloudflare.com/profile/api-tokens |
 | Pages 文档 | https://developers.cloudflare.com/pages/ |
-| 配置字段 | `deployment.cloudflare.api_token`、`deployment.cloudflare.account_id`、`deployment.cloudflare.project_name` |
+| 配置字段 | `deployment.cloudflare.api_token`、`deployment.cloudflare.account_id`（project_name 运行时从 github.repo 仓库名推导） |
 
 ### 4.1 注册账号
 
@@ -213,8 +213,7 @@ npx wrangler whoami
     "targets": ["cloudflare"],
     "cloudflare": {
       "api_token": "你的40位Cloudflare API Token",
-      "account_id": "你的32位Account ID",
-      "project_name": "earnings-reports"
+      "account_id": "你的32位Account ID"
     }
   }
 }
@@ -383,8 +382,7 @@ git clone https://github.com/{your-username}/earnings-reports.git D:\TraeAutomat
     "targets": ["cloudflare"],
     "cloudflare": {
       "api_token": "你的40位Cloudflare API Token",
-      "account_id": "你的32位Account ID",
-      "project_name": "earnings-reports"
+      "account_id": "你的32位Account ID"
     },
     "github": {
       "enabled": false,

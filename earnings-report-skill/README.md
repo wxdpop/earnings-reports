@@ -301,7 +301,7 @@ python "<skill_dir>/scripts/check-and-install.py"
 | `deployment.targets` | 部署方案（`["cloudflare"]` 或 `["cloudflare","github"]`） | 必选 | collect-user-info.py 弹窗 5 收集 |
 | `deployment.cloudflare.api_token` | Cloudflare Pages 部署 | 必选 | [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens) |
 | `deployment.cloudflare.account_id` | Cloudflare 账户标识 | 必选 | Cloudflare Dashboard 右侧栏 |
-| `deployment.cloudflare.project_name` | Cloudflare Pages 项目名 | 必选 | 固定 `earnings-reports` |
+| `deployment.cloudflare.project_name` | Cloudflare Pages 项目名 | 必选 | 运行时从 `deployment.github.repo` 仓库名推导，不在配置文件中定义 |
 | `deployment.github.enabled` | GitHub 部署开关 | 可选 | targets 含 github 时 true |
 | `deployment.github.repo` | GitHub 仓库地址 | 可选 | `用户名/仓库名` |
 

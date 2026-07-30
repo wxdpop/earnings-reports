@@ -17,7 +17,7 @@ collect-user-info.py — 用户信息收集主入口
 ## 两阶段调用协议
 
 阶段 A（无 --answers 参数）：
-    脚本输出弹窗规范 JSON 到 stdout（standalone 5 项 / proxy 6 项），
+    脚本输出弹窗规范 JSON 到 stdout（standalone 6 项 / proxy 7 项），
     LLM 按规范执行 AskUserQuestion，将答案组装为 answers.json 文件。
 
 阶段 B（带 --answers <path> 参数）：
@@ -121,8 +121,49 @@ def check_gh_auth_status():
         return 'check_failed'
 
 
+def get_gh_username():
+    """获取当前 gh CLI 登录的用户名（不执行登录，仅获取）"""
+    try:
+        result = subprocess.run(
+            ['gh', 'api', 'user', '--jq', '.login'],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+        return ''
+    except Exception:
+        return ''
+
+
+def check_github_repo(repo_full):
+    """
+    检查 GitHub 仓库是否存在
+    返回: exists / not_exists / gh_not_installed / not_logged_in / error
+    """
+    if not repo_full or '/' not in repo_full:
+        # 仅仓库名无用户名前缀时无法检查，返回 not_logged_in（需登录后补全再检查）
+        return 'not_logged_in'
+    try:
+        result = subprocess.run(
+            ['gh', 'repo', 'view', repo_full, '--json', 'name'],
+            capture_output=True, text=True, timeout=15
+        )
+        if result.returncode == 0:
+            return 'exists'
+        # 退出码非 0，检查是否是仓库不存在
+        if 'Could not resolve' in result.stderr or 'not found' in result.stderr.lower():
+            return 'not_exists'
+        return 'error'
+    except FileNotFoundError:
+        return 'gh_not_installed'
+    except subprocess.TimeoutExpired:
+        return 'error'
+    except Exception:
+        return 'error'
+
+
 def build_dialogs_spec(mode):
-    """阶段 A：构建弹窗规范 JSON（standalone 5 项 / proxy 6 项）"""
+    """阶段 A：构建弹窗规范 JSON（standalone 6 项 / proxy 7 项）"""
     dialogs = [
         {
             'dialog_id': 'dialog_0_workroot',
@@ -188,6 +229,18 @@ def build_dialogs_spec(mode):
                 {'label': 'Cloudflare + GitHub 双节点', 'value': 'cloudflare_github', 'targets': ['cloudflare', 'github'], 'github_enabled': True}
             ],
             'constraint': 'Cloudflare 始终必选（不可关闭）；GitHub 为可选项，默认不启用'
+        },
+        {
+            'dialog_id': 'dialog_6_github_repo',
+            'collect_item': 'GitHub 仓库名称',
+            'field_mapping': ['deployment.github.repo'],
+            'conditional_on': {'dialog_id': 'dialog_5_deployment', 'choice': 'cloudflare_github'},
+            'description': '仅当弹窗 5 选择 Cloudflare + GitHub 双节点时展示。收集脚本通过 gh api user 获取用户名后补全为 用户名/仓库名',
+            'options': [
+                {'label': '使用默认仓库名 stock-financial-reports（推荐）', 'value': 'stock-financial-reports'},
+                {'label': '手动输入仓库名', 'value': '__user_input__', 'hint': '用户打字输入仓库名（仅仓库名，不含用户名前缀），如 my-earnings-reports'}
+            ],
+            'constraint': 'gh 未登录时仅写入仓库名，步骤 6.5.2 完成 gh auth login 后由父技能补全为 用户名/仓库名'
         }
     ]
     # standalone 模式不收集调度间隔（子技能无定时调度任务环节）
@@ -269,6 +322,27 @@ def apply_answers(config, answers, mode):
         targets = ['cloudflare']
         github_enabled = False
 
+    # 弹窗 6：GitHub 仓库名称（仅当选择 cloudflare_github 时处理）
+    github_repo_name = ''
+    github_repo_full = ''
+    if choice5 == 'cloudflare_github':
+        ans6 = answers.get('dialog_6_github_repo', {})
+        choice6 = ans6.get('choice', 'stock-financial-reports')
+        if choice6 == '__user_input__':
+            github_repo_name = ans6.get('user_input', 'stock-financial-reports').strip()
+        else:
+            github_repo_name = choice6 or 'stock-financial-reports'
+        # 通过 gh api user 获取用户名补全为 用户名/仓库名
+        gh_user = get_gh_username()
+        if gh_user:
+            github_repo_full = f"{gh_user}/{github_repo_name}"
+        else:
+            # gh 未登录或不可用，仅写入仓库名，步骤 6.5.2 登录后由父技能补全
+            github_repo_full = github_repo_name
+    else:
+        # 仅 cloudflare 时，仓库名用默认值（作为 cloudflare project_name 来源）
+        github_repo_name = 'stock-financial-reports'
+
     config.setdefault('deployment', {})
     config['deployment']['targets'] = targets
     config['deployment'].setdefault('cloudflare', {})
@@ -276,10 +350,11 @@ def apply_answers(config, answers, mode):
         config['deployment']['cloudflare']['api_token'] = '<your-cloudflare-api-token>'
     if config['deployment']['cloudflare'].get('account_id', '') == '':
         config['deployment']['cloudflare']['account_id'] = '<your-cloudflare-account-id>'
-    config['deployment']['cloudflare']['project_name'] = config['deployment']['cloudflare'].get('project_name', 'earnings-reports')
+    # cloudflare project_name 运行时从仓库名推导（与 github 仓库名保持一致），不存入配置模板
+    config['deployment']['cloudflare']['project_name'] = github_repo_name
     config['deployment'].setdefault('github', {})
     config['deployment']['github']['enabled'] = github_enabled
-    config['deployment']['github']['repo'] = config['deployment']['github'].get('repo', '')
+    config['deployment']['github']['repo'] = github_repo_full
 
     return {
         'company_library_choice': choice4,
@@ -287,6 +362,8 @@ def apply_answers(config, answers, mode):
         'schedule_cron': config.get('schedule', {}).get('cron', ''),
         'schedule_timezone': config.get('schedule', {}).get('timezone', 'Asia/Shanghai'),
         'deployment_targets': targets,
+        'github_repo_name': github_repo_name,
+        'github_repo_full': github_repo_full,
     }
 
 
@@ -296,6 +373,29 @@ def build_final_status(config, mode, collected_meta):
     targets = config.get('deployment', {}).get('targets', [])
     github_required = 'github' in targets
     gh_status = check_gh_auth_status() if github_required else 'not_required'
+
+    # GitHub 仓库检查（仅当 github 部署启用时）
+    github_repo_name = collected_meta.get('github_repo_name', '')
+    github_repo_full = collected_meta.get('github_repo_full', '')
+    if github_required:
+        github_repo_status = check_github_repo(github_repo_full)
+        # 推导 github_repo_action
+        if github_repo_status == 'exists':
+            # 仓库存在，需检查本地目录是否已存在且非空（决定 clone 还是 pull）
+            repo_dir = config.get('paths', {}).get('repo_dir', '')
+            if repo_dir and Path(repo_dir).exists() and any(Path(repo_dir).iterdir()):
+                github_repo_action = 'pull'
+            else:
+                github_repo_action = 'clone'
+        elif github_repo_status == 'not_exists':
+            github_repo_action = 'init'
+        elif github_repo_status == 'not_logged_in':
+            github_repo_action = 'pending'  # 需登录后重新检查
+        else:
+            github_repo_action = 'pending'  # gh_not_installed / error，需处理后重新检查
+    else:
+        github_repo_status = 'skip'
+        github_repo_action = 'skip'
 
     # 判断 cloudflare 是否已配置（无占位符）
     cf = config.get('deployment', {}).get('cloudflare', {})
@@ -343,6 +443,10 @@ def build_final_status(config, mode, collected_meta):
         'cloudflare_configured': cloudflare_configured,
         'github_login_required': github_required,
         'github_login_status': gh_status,
+        'github_repo_name': github_repo_name,
+        'github_repo_full': github_repo_full,
+        'github_repo_status': github_repo_status,
+        'github_repo_action': github_repo_action,
         'next_actions': next_actions,
     }
 

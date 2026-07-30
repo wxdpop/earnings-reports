@@ -153,6 +153,7 @@ python "{child_skill_dir}/scripts/collect-user-info.py" --mode proxy --parent-co
 - 采用两阶段调用协议（阶段 A 输出弹窗规范 → LLM 执行 AskUserQuestion → 阶段 B 写入 config）
 - 收集 6 项：工作根目录、调度间隔、API Key、飞书 Webhook、公司库导入方案、部署方案
 - 阶段 B 输出 JSON 供后续步骤消费（`placeholders_remaining` → 步骤 6；`company_library_*` → 步骤 8；`schedule_*` → 步骤 10；`cloudflare_configured` / `github_login_*` → 步骤 6.5/9）
+- `github_repo_name` / `github_repo_full` / `github_repo_status` / `github_repo_action` → 步骤 6.5.3（GitHub 仓库 clone/init/pull）
 - **详细规范（弹窗选项、字段映射、占位符检测、输出 JSON 消费映射）见子技能 [info-collect-spec.md](../earnings-report-skill/references/info-collect-spec.md)**
 
 #### 步骤 3：★ Python 前提项检测 + LLM 自动安装（agent 优先检测）
@@ -317,6 +318,8 @@ exec bash -l  # 或重新打开终端
 
 **6.5.2 GitHub 登录**（可选，根据步骤 2 阶段 B 输出 JSON 的字段判断）
 
+收集完毕后先引导用户完成 gh CLI 登录；若未登录则在环境检测（步骤 4）后再次引导登录。gh auth login 完成后才能进入步骤 6.5.3。
+
 - 读取 `github_login_required` 字段：`true` → 执行 GitHub 登录；`false` → **跳过 GitHub 登录**
 - 读取 `github_login_status` 字段：`logged_in` → 跳过登录；`not_logged_in` → 执行登录（`gh auth login`）
 
@@ -337,6 +340,29 @@ exec bash -l  # 或重新打开终端
 - `.parent-init-done.json` 标记 `github_logged_in: true`
 
 ★ 部署方案约束：Cloudflare 始终必选（不可关闭）；GitHub 为可选项，默认不启用。
+
+#### 步骤 6.5.3：GitHub 仓库处理（gh auth login 完成后执行）
+
+读取步骤 2 输出 JSON 的 `github_repo_status` / `github_repo_action` 字段：
+
+- `github_repo_action=clone` → 仓库存在且本地目录不存在：
+  - `git clone https://github.com/<github_repo_full>.git <paths.repo_dir>`
+  - 检查并创建 `reports/` 子文件夹
+- `github_repo_action=pull` → 仓库存在且本地目录已存在且非空：
+  - `cd <paths.repo_dir>` + `git pull`（合并远程更新）
+  - 检查并创建 `reports/` 子文件夹
+- `github_repo_action=init` → 仓库不存在：
+  - 在 `paths.repo_dir` 本地 `git init`
+  - 创建 `reports/` 子文件夹
+  - 添加 `.gitignore`（排除 config.local.json / .env-check-result.*.json / .parent-init-done.json）
+  - 标记 `github_repo_action=init`（待子技能阶段 8 首次 push 时执行 gh repo create）
+- `github_repo_action=pending` → gh 未登录或不可用：
+  - 终止并提示用户先完成 gh auth login
+  - 登录完成后，重新调用 `collect-user-info.py --mode proxy --parent-config ... --answers ...` 执行阶段 B，重新检查仓库状态并更新 `github_repo_status` / `github_repo_action` 字段
+  - 也可由父技能直接执行 `gh repo view <github_repo_full> --json name` 重新检查，根据结果执行对应 clone/pull/init 分支
+- `github_repo_action=skip` → 仅 cloudflare 部署，跳过
+
+**路径关系**：`paths.repo_dir = paths.output_dir`（同一目录），`reports/` 建在仓库文件夹下。
 
 #### 步骤 7：同步配置到子技能目录（时机后移到子技能收集完成后，父→子复制仍保留）
 
@@ -823,8 +849,7 @@ python "{parent_skill_dir}\scripts\library-manager.py" --action update-status \
     "targets": ["cloudflare"],
     "cloudflare": {
       "api_token": "<your-cloudflare-api-token>",
-      "account_id": "<your-cloudflare-account-id>",
-      "project_name": "stock-financial-reports"
+      "account_id": "<your-cloudflare-account-id>"
     },
     "github": {
       "enabled": false,
@@ -848,6 +873,7 @@ python "{parent_skill_dir}\scripts\library-manager.py" --action update-status \
   - `["cloudflare"]`：默认，仅 Cloudflare Pages（推荐）
   - `["cloudflare", "github"]`：Cloudflare + GitHub 双节点（可选追加 GitHub）
 - `deployment.github.enabled`：targets 含 `github` 时为 true，否则 false（默认 false）
+- `deployment.cloudflare.project_name`：cloudflare project_name 运行时从 github.repo 仓库名推导，不在配置文件中定义
 
 ### 子技能配置同步
 

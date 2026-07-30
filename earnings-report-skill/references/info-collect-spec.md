@@ -10,7 +10,7 @@
 
 ```
 阶段 A（无 --answers 参数）：
-    脚本输出弹窗规范 JSON（standalone 5 项 / proxy 6 项）→ LLM 按规范执行 AskUserQuestion → 组装 answers.json
+    脚本输出弹窗规范 JSON（standalone 6 项 / proxy 7 项）→ LLM 按规范执行 AskUserQuestion → 组装 answers.json
 
 阶段 B（带 --answers 参数）：
     脚本读取 answers.json → 写入 config.local.json → 输出最终状态 JSON
@@ -20,14 +20,14 @@
 
 | 模式 | 调用方 | 写入目标 | 弹窗数量 | 适用场景 |
 |---|---|---|---|---|
-| `standalone` | 子技能自身 | 子技能 config.local.json | 5 项（不含调度间隔） | 子技能独立使用 |
-| `proxy` | 父技能调用 | 父技能 config.local.json | 6 项（含调度间隔） | 父技能初始化时代理收集 |
+| `standalone` | 子技能自身 | 子技能 config.local.json | 6 项（不含调度间隔） | 子技能独立使用 |
+| `proxy` | 父技能调用 | 父技能 config.local.json | 7 项（含调度间隔） | 父技能初始化时代理收集 |
 
 > **约束**：子技能无定时调度任务环节，`standalone` 模式不收集调度间隔（弹窗 1）；`proxy` 模式由父技能代理时才收集调度间隔并写入父技能 config 的 `schedule` 字段。
 
 ---
 
-## 二、弹窗规范（standalone 5 项 / proxy 6 项）
+## 二、弹窗规范（standalone 6 项 / proxy 7 项）
 
 ### 弹窗 0：工作根目录（输出目录定位）
 
@@ -127,7 +127,7 @@
 - `deployment.github.enabled` ← 用户选择
 - `deployment.cloudflare.api_token` ← 用户后续手动编辑填入
 - `deployment.cloudflare.account_id` ← 用户后续手动编辑填入
-- `deployment.cloudflare.project_name` = `earnings-reports`（固定）
+- `deployment.cloudflare.project_name`：运行时从 github.repo 仓库名推导，不在配置文件中定义
 - `deployment.github.repo` = 空（用户后续填入）
 
 **占位符检测**：
@@ -135,6 +135,20 @@
 - `<your-cloudflare-account-id>`
 
 **约束**：Cloudflare 始终必选（不可关闭）；GitHub 为可选项，默认不启用。
+
+---
+
+### 弹窗 6：GitHub 仓库名称（dialog_6_github_repo）
+
+- **conditional_on**：`dialog_5_deployment.choice == 'cloudflare_github'`（仅当弹窗 5 选择双节点时展示）
+- **字段映射**：`deployment.github.repo`
+- **选项**：
+  - `stock-financial-reports`（默认推荐）
+  - `__user_input__`（用户手动输入仓库名，仅仓库名不含用户名前缀）
+- **处理逻辑**：
+  - 收集脚本通过 `gh api user --jq .login` 获取用户名，补全为 `用户名/仓库名`
+  - gh 未登录时仅写入仓库名，步骤 6.5.2 完成 gh auth login 后由父技能补全
+- **cloudflare project_name 推导**：cloudflare project_name 运行时等于仓库名（取 `/` 后的部分），不在配置文件中定义
 
 ---
 
@@ -184,8 +198,7 @@
     "targets": ["cloudflare"],
     "cloudflare": {
       "api_token": "<your-cloudflare-api-token>",
-      "account_id": "<your-cloudflare-account-id>",
-      "project_name": "earnings-reports"
+      "account_id": "<your-cloudflare-account-id>"
     },
     "github": { "enabled": false, "repo": "" }
   }
@@ -209,8 +222,7 @@
     "targets": ["cloudflare"],
     "cloudflare": {
       "api_token": "<your-cloudflare-api-token>",
-      "account_id": "<your-cloudflare-account-id>",
-      "project_name": "earnings-reports"
+      "account_id": "<your-cloudflare-account-id>"
     },
     "github": { "enabled": false, "repo": "" }
   },
@@ -230,6 +242,7 @@
 | `feishu.*` / `finnhub.*` / `alphavantage.*` | ✓ | ✓ | 两边都保留 |
 | `paths.*` | ✓ | ✓ | 两边都保留 |
 | `deployment.*` | ✓ | ✓ | 两边都保留 |
+| `deployment.github.repo` | ✓ | ✓ | 由收集脚本写入（gh 登录时为 `用户名/仓库名`，未登录时仅仓库名） |
 | `schedule.*` | ✗ | ✓ | 仅父技能（子技能不需要调度） |
 | `child_skill_dir` / `parent_skill_dir` | ✗ | ✗ | 由父技能步骤 1 推断，不由收集脚本写入 |
 | `python_executable` | ✗ | ✗ | 由父技能步骤 3 探测，不由收集脚本写入 |
@@ -252,6 +265,10 @@
 | `github_login_required` | 步骤 6.5 | 决定是否执行 GitHub 登录引导 |
 | `github_login_status` | 步骤 6.5/9 | 决定是否执行 `gh auth login`，写入 `github_logged_in` 标记 |
 | `next_actions` | 步骤 6/6.5 | 引导用户后续操作的动作清单 |
+| `github_repo_name` | 步骤 6.5.3 | 仓库名，如 stock-financial-reports |
+| `github_repo_full` | 步骤 6.5.3 | 完整地址，如 wxdpop/stock-financial-reports |
+| `github_repo_status` | 步骤 6.5.3 | exists/not_exists/not_logged_in/skip |
+| `github_repo_action` | 步骤 6.5.3 | clone/pull/init/pending/skip |
 
 ---
 

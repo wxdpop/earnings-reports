@@ -175,6 +175,20 @@ npx skills find "财报"
 
 ---
 
+## 更新 Skill
+
+重新执行安装命令即等于更新（skills CLI 会覆盖安装最新版本）：
+
+```powershell
+# 更新子技能到最新版本
+npx skills add https://github.com/wxdpop/earnings-reports/tree/main/earnings-report-skill -g -a "*" -y --skill earnings-report
+
+# 更新父技能到最新版本
+npx skills add https://github.com/wxdpop/earnings-reports/tree/main/earnings-report-orchestrator-skill -g -a "*" -y --skill earnings-report-orchestrator
+```
+
+---
+
 ## ★ 使用方式
 
 ### 子技能使用方式（earnings-report）
@@ -351,8 +365,7 @@ python "<skill_dir>\scripts\check-and-install.py" --fix-config
     "targets": ["cloudflare"],
     "cloudflare": {
       "api_token": "<your-cloudflare-api-token>",
-      "account_id": "<your-cloudflare-account-id>",
-      "project_name": "earnings-reports"
+      "account_id": "<your-cloudflare-account-id>"
     },
     "github": { "enabled": false, "repo": "" }
   },
@@ -592,7 +605,7 @@ earnings-reports/                                  # GitHub 仓库根
    ```
 3. 同步到 Cloudflare Pages（主节点）：
    ```bash
-   npx wrangler pages deploy <deploy-dir> --project-name=earnings-reports --branch=main --commit-dirty=true
+   npx wrangler pages deploy <deploy-dir> --project-name=<从 config.local.json deployment.cloudflare.project_name 读取> --branch=main --commit-dirty=true
    ```
 4. GitHub Pages 会自动部署，访问 URL 格式：`https://wxdpop.github.io/earnings-reports/reports/{TICKER}/{filename}.html`
 
