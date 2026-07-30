@@ -150,8 +150,8 @@ python "{skill_dir}/scripts/collect-user-info.py" --mode standalone --check-only
 
 **核心说明**：
 - 采用两阶段调用协议（阶段 A 输出弹窗规范 → LLM 执行 AskUserQuestion → 阶段 B 写入 config）
-- standalone 模式收集 6 项（输出根目录、API Key、飞书 Webhook、公司库导入方案、部署方案、GitHub 仓库名称→`deployment.github.repo`），**不收集调度间隔**（子技能无定时调度任务环节）；GitHub 仓库名称仅当部署方案选择 cloudflare_github 时收集
-- proxy 模式收集 7 项（增加调度间隔，写入父技能 config 的 `schedule` 字段；GitHub 仓库名称仅当部署方案选择 cloudflare_github 时收集）
+- standalone 模式收集 6 项（输出根目录、API Key、飞书 Webhook、公司库导入方案、部署方案、项目名称→`deployment.github.repo`），**不收集调度间隔**（子技能无定时调度任务环节）；项目名称始终收集（无论哪种部署方案，因为仓库目录推导依赖项目名）
+- proxy 模式收集 7 项（增加调度间隔，写入父技能 config 的 `schedule` 字段；项目名称始终收集）
 - 脚本不直接调用 AskUserQuestion，通过两阶段调用协议实现跨 Agent 兼容
 - `gh auth login` / `wrangler login` 是系统级交互操作，脚本仅检测状态，实际登录由 LLM 执行
 - **详细规范（弹窗选项、字段映射、占位符检测、字段归属规则、输出 JSON 消费映射）见 [info-collect-spec.md](references/info-collect-spec.md)**
