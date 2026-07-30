@@ -605,7 +605,7 @@ earnings-reports/                                  # GitHub 仓库根
    ```
 3. 同步到 Cloudflare Pages（主节点）：
    ```bash
-   npx wrangler pages deploy <deploy-dir> --project-name=<从 config.local.json deployment.cloudflare.project_name 读取> --branch=main --commit-dirty=true
+   npx wrangler pages deploy <deploy-dir> --project-name=<从 deployment.github.repo 提取仓库名> --branch=main --commit-dirty=true
    ```
 4. GitHub Pages 会自动部署，访问 URL 格式：`https://wxdpop.github.io/earnings-reports/reports/{TICKER}/{filename}.html`
 

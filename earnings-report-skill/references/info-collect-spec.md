@@ -127,7 +127,7 @@
 - `deployment.github.enabled` ← 用户选择
 - `deployment.cloudflare.api_token` ← 用户后续手动编辑填入
 - `deployment.cloudflare.account_id` ← 用户后续手动编辑填入
-- `deployment.cloudflare.project_name`：运行时从 github.repo 仓库名推导，不在配置文件中定义
+- wrangler `--project-name`：不在配置文件中定义，运行时从 `deployment.github.repo` 提取仓库名（取 `/` 后的部分）
 - `deployment.github.repo` = 空（用户后续填入）
 
 **占位符检测**：
@@ -148,7 +148,7 @@
 - **处理逻辑**：
   - 收集脚本通过 `gh api user --jq .login` 获取用户名，补全为 `用户名/仓库名`
   - gh 未登录时仅写入仓库名，步骤 6.5.2 完成 gh auth login 后由父技能补全
-- **cloudflare project_name 推导**：cloudflare project_name 运行时等于仓库名（取 `/` 后的部分），不在配置文件中定义
+- **wrangler `--project-name` 推导**：不在配置文件中定义，运行时从 `deployment.github.repo` 提取仓库名（取 `/` 后的部分）
 
 ---
 

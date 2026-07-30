@@ -151,7 +151,7 @@
 | 控制台 | https://dash.cloudflare.com/ |
 | API Token 管理 | https://dash.cloudflare.com/profile/api-tokens |
 | Pages 文档 | https://developers.cloudflare.com/pages/ |
-| 配置字段 | `deployment.cloudflare.api_token`、`deployment.cloudflare.account_id`（project_name 运行时从 github.repo 仓库名推导） |
+| 配置字段 | `deployment.cloudflare.api_token`、`deployment.cloudflare.account_id`（wrangler 运行时从 `deployment.github.repo` 提取仓库名作为 `--project-name`） |
 
 ### 4.1 注册账号
 

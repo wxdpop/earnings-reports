@@ -26,7 +26,7 @@
     "repo_dir": ""
   },
   "deployment": {
-    "_comment": "部署配置 - Cloudflare 始终必选（不可关闭）；GitHub 可选（默认不启用，含 github 时需登录）。cloudflare.project_name 运行时从 github.repo 仓库名推导，不在模板中配置",
+    "_comment": "部署配置 - Cloudflare 始终必选（不可关闭）；GitHub 可选（默认不启用，含 github 时需登录）。wrangler 运行时从 github.repo 仓库名推导 --project-name，不在模板中配置",
     "targets": ["cloudflare"],
     "cloudflare": {
       "api_token": "<your-cloudflare-api-token>",

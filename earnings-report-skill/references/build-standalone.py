@@ -132,7 +132,9 @@ def main():
     parser.add_argument('--source-dir', '-s', required=True,
                         help='报告源目录（必需，应包含 index.html/_shared/js/echarts.min.js/assets/charts.js）')
     parser.add_argument('--output-dir', '-o', default='',
-                        help='输出目录（可选，默认从配置读取）')
+                        help='输出根目录（可选，默认从配置读取）')
+    parser.add_argument('--ticker', '-t', default='',
+                        help='股票代码大写（如 NVDA），用于创建 reports/{TICKER}/ 子目录。留空时输出到输出根目录')
     args = parser.parse_args()
 
     source_dir = os.path.abspath(args.source_dir)
@@ -154,7 +156,13 @@ def main():
 
     # 加载配置 + 解析输出目录
     config = load_config()
-    output_dir = resolve_output_dir(args.output_dir, config)
+    output_root = resolve_output_dir(args.output_dir, config)
+    # 有 ticker 时输出到 reports/{TICKER}/ 子目录（每个公司用子文件夹隔离）
+    if args.ticker:
+        ticker = args.ticker.strip().upper()
+        output_dir = os.path.join(output_root, 'reports', ticker)
+    else:
+        output_dir = output_root
     output_file = os.path.join(output_dir, f"{report_name}.html")
 
     # 校验源文件（charts.js 必须存在，echarts 走 CDN 无需本地文件）

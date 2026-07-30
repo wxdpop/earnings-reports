@@ -792,7 +792,7 @@ python "{parent_skill_dir}\scripts\dispatch-child-skill.py" --ticker "NVDA" --qu
 阶段 2：数据整理与汇率换算（LLM 完成）
 阶段 3：生成 sections JSON（LLM 按 templates/sections-reference.md 规范生成）
 阶段 4：python "{child_skill_dir}\scripts\fill-template.py" --template-file "{child_skill_dir}\references\report-template.md" --sections-file "..." --output-file "..."
-阶段 5：python "{child_skill_dir}\references\build-standalone.py" --source-dir "..."（构建后移动到 {repo_dir}\reports\{TICKER}\）
+阶段 5：python "{child_skill_dir}\references\build-standalone.py" --source-dir "..." --ticker "{TICKER}" --output-dir "{repo_dir}"（直接输出到 {repo_dir}\reports\{TICKER}\，只保留单文件 HTML）
 阶段 6：python "{child_skill_dir}\references\verify-headless.py" "{repo_dir}\reports\{TICKER}\{filename}.html"
 阶段 7-9：并行执行清理 + 部署 + 飞书推送（★ Trae 用 Task 子代理）
          飞书推送：python "{child_skill_dir}\references\send-feishu.py" --report-file "..."
@@ -873,7 +873,7 @@ python "{parent_skill_dir}\scripts\library-manager.py" --action update-status \
   - `["cloudflare"]`：默认，仅 Cloudflare Pages（推荐）
   - `["cloudflare", "github"]`：Cloudflare + GitHub 双节点（可选追加 GitHub）
 - `deployment.github.enabled`：targets 含 `github` 时为 true，否则 false（默认 false）
-- `deployment.cloudflare.project_name`：cloudflare project_name 运行时从 github.repo 仓库名推导，不在配置文件中定义
+- wrangler `--project-name`：不在配置文件中定义，运行时从 `deployment.github.repo` 提取仓库名（取 `/` 后的部分）
 
 ### 子技能配置同步
 

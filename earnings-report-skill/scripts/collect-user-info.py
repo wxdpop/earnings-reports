@@ -340,8 +340,10 @@ def apply_answers(config, answers, mode):
             # gh 未登录或不可用，仅写入仓库名，步骤 6.5.2 登录后由父技能补全
             github_repo_full = github_repo_name
     else:
-        # 仅 cloudflare 时，仓库名用默认值（作为 cloudflare project_name 来源）
+        # 仅 cloudflare 时，仓库名用默认值（wrangler 运行时从 repo 提取仓库名作为 --project-name）
         github_repo_name = 'stock-financial-reports'
+        # 仅 cloudflare 时 github.repo 也写入仓库名（wrangler 从 repo 提取仓库名作为 --project-name）
+        github_repo_full = github_repo_name
 
     config.setdefault('deployment', {})
     config['deployment']['targets'] = targets
@@ -350,8 +352,7 @@ def apply_answers(config, answers, mode):
         config['deployment']['cloudflare']['api_token'] = '<your-cloudflare-api-token>'
     if config['deployment']['cloudflare'].get('account_id', '') == '':
         config['deployment']['cloudflare']['account_id'] = '<your-cloudflare-account-id>'
-    # cloudflare project_name 运行时从仓库名推导（与 github 仓库名保持一致），不存入配置模板
-    config['deployment']['cloudflare']['project_name'] = github_repo_name
+    # wrangler --project-name 不存入 config，运行时从 deployment.github.repo 提取仓库名推导
     config['deployment'].setdefault('github', {})
     config['deployment']['github']['enabled'] = github_enabled
     config['deployment']['github']['repo'] = github_repo_full

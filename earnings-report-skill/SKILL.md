@@ -23,7 +23,7 @@ description: "自动生成上市公司最新财报深度分析HTML报告（含�
 |---|---|---|
 | GitHub 仓库 | `deployment.github.repo`（动态读取，可选，deployment.targets 含 github 时启用） | — |
 | GitHub Pages URL | `https://{github-user}.github.io/{repo-name}/reports/{TICKER}/{filename}.html`（从 `deployment.github.repo` 推导，可选备用） | — |
-| Cloudflare Pages 项目名 | cloudflare project_name 运行时从 `deployment.github.repo` 仓库名推导，不在配置文件中定义（必选） | — |
+| Cloudflare Pages 项目名 | 运行时从 `deployment.github.repo` 提取仓库名（取 `/` 后的部分），不在配置文件中定义（必选） | — |
 | Cloudflare Pages URL | `https://earnings-reports.pages.dev/reports/{TICKER}/{filename}.html`（★ 主链接，必选） | — |
 | 本地 git 仓库路径 | 用户工作空间：`config.local.json` 的 `paths.repo_dir`，默认 `<工作根目录>/Output/stock-financial-reports`（需为 git 仓库根目录，**不从技能安装路径推断**）| **输出目录** |
 | 输出目录路径 | 用户工作空间：`config.local.json` 的 `paths.output_dir`，默认 `<工作根目录>/Output/stock-financial-reports`（**不从技能安装路径推断**）| **输出目录** |
@@ -300,17 +300,23 @@ python "{skill_dir}/scripts/fill-template.py" \
 
 ```bash
 # 跨平台统一调用（统一为 Python 入口）
-python "{skill_dir}/references/build-standalone.py" --source-dir "{output_dir}/nok-q2-2026-earnings"
-# 输出目录可省略，自动从 config.local.json / 平台默认值 读取
-python "{skill_dir}/references/build-standalone.py" --source-dir "{output_dir}/nok-q2-2026-earnings" --output-dir "{output_dir}"
+# ★ --ticker 必传：股票代码大写（如 NOK），用于创建 reports/{TICKER}/ 子目录，每个公司用子文件夹隔离
+python "{skill_dir}/references/build-standalone.py" \
+    --source-dir "{output_dir}/nok-q2-2026-earnings" \
+    --ticker "NOK" \
+    --output-dir "{output_dir}"
 ```
 
 脚本自动（使用 Python 字符串 .replace() 精确匹配，避免正则不稳定）：
 1. echarts.min.js 自动复制（从 `skill/assets/js/echarts.min.js` 复制到 `$SOURCE_DIR/_shared/js/`，无需网络下载）
 2. 内联 echarts.min.js 和 charts.js（转义 `</script>` 为 `<\/script>`）
-3. 输出单文件到中间产物路径：输出到 `config.local.json` 的 `paths.output_dir`（用户工作空间，留空时脚本抛错提示用户配置）
+3. 输出单文件到 `paths.output_dir/reports/{TICKER}/{company-slug}-{quarter}-earnings.html`（repo_dir = output_dir，reports 建在仓库文件夹下）
 
-**★ 移动到统一存放点**：报告输出到 `paths.repo_dir/reports/{TICKER}/`（repo_dir = output_dir，reports 建在仓库文件夹下），最终文件为 `{company-slug}-{quarter}-earnings.html`，删除 Output 根目录的中间产物。每个公司目录只保留一个 HTML 文件（不复制 index.html 副本）。
+**★ reports 目录规范**：
+- 路径：`paths.repo_dir/reports/{TICKER}/{company-slug}-{quarter}-earnings.html`
+- **只保留最终单文件 HTML**，不复制 index.html 副本，不保留 _shared/js/、assets/charts.js 等中间产物
+- 每个公司用子文件夹隔离（按 TICKER 大写命名，如 `reports/NOK/`、`reports/NVDA/`）
+- 源目录 `{output_dir}/{company-slug}-{quarter}-earnings/`（含 index.html、assets/charts.js 等中间产物）由阶段 7 资源清理删除
 
 ### 阶段 6：无头浏览器验证
 
@@ -364,7 +370,7 @@ Chrome 不可用时自动退化为纯 HTML 结构验证（不执行 JS，无法�
 - `deployment.targets` 含 `"github"` → 追加执行 GitHub 部署（依据 `github_repo_action` 选择 init/clone 流程，仓库名称动态读取 `deployment.github.repo`）；不含 → 跳过
 
 **前置条件**：
-- Cloudflare（必选）：wrangler 已授权、Cloudflare Pages 项目 `earnings-reports` 已创建
+- Cloudflare（必选）：wrangler 已授权、Cloudflare Pages 项目（运行时从 `deployment.github.repo` 提取仓库名作为 `--project-name`）已创建
 - GitHub（可选，仅当 deployment.targets 含 github 时需要）：`gh` 已鉴权（`gh auth status` 检查）、仓库 `deployment.github.repo`（动态读取）已启用 Pages
 
 **GitHub Pages**（仅当 deployment.targets 含 github 时执行）：`git push origin main` 后自动触发（1-2 分钟生效）。
@@ -375,8 +381,9 @@ Chrome 不可用时自动退化为纯 HTML 结构验证（不执行 JS，无法�
 # Windows
 # repo_dir 从 config.local.json 读取，默认 <工作根目录>/Output/stock-financial-reports（不从技能安装路径推断）
 $repoDir = "<从 config.local.json paths.repo_dir 读取，如 d:\TraeAutomaticTools\Output\earnings-reports>"
-# CF_PROJECT 从 config.local.json deployment.cloudflare.project_name 读取（运行时由 collect-user-info.py 从 github.repo 仓库名推导写入）
-$CF_PROJECT = "<从 config.local.json deployment.cloudflare.project_name 读取，如 stock-financial-reports>"
+# CF_PROJECT 从 deployment.github.repo 提取仓库名（取 / 后的部分，无 / 则整体）
+$ghRepo = "<从 config.local.json deployment.github.repo 读取，如 wxdpop/stock-financial-reports>"
+$CF_PROJECT = if ($ghRepo.Contains("/")) { $ghRepo.Split("/")[-1] } else { $ghRepo }
 $src = "$repoDir\reports"
 $dst = "$repoDir\cf-pages-deploy\reports"
 # 1. 复制 reports/ 到 cf-pages-deploy/reports/（.NET API）
@@ -386,7 +393,7 @@ Get-ChildItem -LiteralPath $src -Recurse | ForEach-Object {
     if ($_.PSIsContainer) { [System.IO.Directory]::CreateDirectory($dest) | Out-Null }
     else { [System.IO.File]::Copy($_.FullName, $dest, $true) }
 }
-# 2. 从 cf-pages-deploy 目录部署（★ 切勿直接部署 reports 目录）
+# 2. 从 cf-pages-deploy 目录部署（切勿直接部署 reports 目录）
 Set-Location "$repoDir\cf-pages-deploy"
 npx --yes wrangler pages deploy . --project-name "$CF_PROJECT" --branch main --commit-dirty=true
 # 3. 清理临时目录
@@ -397,8 +404,9 @@ npx --yes wrangler pages deploy . --project-name "$CF_PROJECT" --branch main --c
 # Mac/Linux
 # repo_dir 从 config.local.json 读取，默认 <工作根目录>/Output/stock-financial-reports（不从技能安装路径推断）
 repo_dir="<从 config.local.json paths.repo_dir 读取，如 ~/TraeAutomaticTools/Output/stock-financial-reports>"
-# CF_PROJECT 从 config.local.json deployment.cloudflare.project_name 读取（运行时由 collect-user-info.py 从 github.repo 仓库名推导写入）
-CF_PROJECT="<从 config.local.json deployment.cloudflare.project_name 读取，如 stock-financial-reports>"
+# CF_PROJECT 从 deployment.github.repo 提取仓库名（取 / 后的部分，无 / 则整体）
+gh_repo="<从 config.local.json deployment.github.repo 读取，如 wxdpop/stock-financial-reports>"
+CF_PROJECT="${gh_repo##*/}"
 mkdir -p "$repo_dir/cf-pages-deploy/reports"
 cp -r "$repo_dir/reports/." "$repo_dir/cf-pages-deploy/reports/"
 cd "$repo_dir/cf-pages-deploy"
