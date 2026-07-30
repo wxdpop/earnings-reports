@@ -1,0 +1,16 @@
+# 父技能敏感文件排除
+config.local.json
+.parent-init-done.json
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# 环境检测缓存（运行时生成）
+.env-check-result.*.json
+
+# 临时文件
+*.tmp
+*.bak
+*.log

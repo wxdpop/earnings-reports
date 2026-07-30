@@ -1,0 +1,46 @@
+{
+  "_comment": "父技能配置模板 - 请复制为 config.local.json 并填入真实值",
+  "_usage": "复制本文件为同目录下的 config.local.json，然后替换 <your-xxx> 占位符为真实值。结构与子技能 config.local.json 一致（嵌套），便于同步复制",
+  "_path_rule": "★ v3.2 路径动态化：child_skill_dir/parent_skill_dir 留空时，初始化时根据当前技能实际安装路径自动推断（推荐留空）；paths.output_dir/paths.repo_dir 留空时使用平台默认值",
+  "_py_rule": "★ v3.2.2 python_executable 留空时，初始化阶段 3 探测 agent 内置 Python 优先填充（避开 Windows Store stub），后续调用直接读取此字段",
+  "child_skill_dir": "",
+  "parent_skill_dir": "",
+  "python_executable": "",
+  "feishu": {
+    "_comment": "飞书群机器人 Webhook URL",
+    "webhook_url": "<your-feishu-webhook-url>"
+  },
+  "finnhub": {
+    "_comment": "Finnhub API Key - https://finnhub.io/ 注册获取",
+    "api_key": "<your-finnhub-api-key>"
+  },
+  "alphavantage": {
+    "_comment": "Alpha Vantage API Key - https://www.alphavantage.co/ 注册获取",
+    "api_key": "<your-alphavantage-api-key>"
+  },
+  "paths": {
+    "_comment": "★ v3.2.1 输出目录配置（用户工作空间，与技能安装目录无关）- 留空时由初始化弹窗0询问工作根目录后填写为 <工作根目录>/Output/earnings-reports",
+    "_rule": "输出目录不从技能安装路径推断；留空时脚本抛错提示用户配置",
+    "output_dir": "",
+    "repo_dir": ""
+  },
+  "deployment": {
+    "_comment": "★ 部署配置 - Cloudflare 始终必选（不可关闭）；GitHub 可选（默认不启用，含 github 时需登录）",
+    "targets": ["cloudflare"],
+    "cloudflare": {
+      "api_token": "<your-cloudflare-api-token>",
+      "account_id": "<your-cloudflare-account-id>",
+      "project_name": "earnings-reports"
+    },
+    "github": {
+      "enabled": false,
+      "repo": ""
+    }
+  },
+  "schedule": {
+    "_comment": "定时任务调度配置",
+    "enabled": true,
+    "cron": "0 0,12 * * *",
+    "timezone": "Asia/Shanghai"
+  }
+}
