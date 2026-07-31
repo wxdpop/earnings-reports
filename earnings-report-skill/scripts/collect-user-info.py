@@ -162,6 +162,54 @@ def check_github_repo(repo_full):
         return 'error'
 
 
+def check_wrangler_auth():
+    """
+    检测 wrangler CLI 授权状态（执行 wrangler whoami）
+    返回: authorized / not_authorized / wrangler_not_installed / error
+    """
+    try:
+        result = subprocess.run(
+            ['npx', '--yes', 'wrangler', 'whoami'],
+            capture_output=True, text=True, timeout=30
+        )
+        if result.returncode == 0:
+            return 'authorized'
+        return 'not_authorized'
+    except FileNotFoundError:
+        return 'wrangler_not_installed'
+    except subprocess.TimeoutExpired:
+        return 'error'
+    except Exception:
+        return 'error'
+
+
+def check_github_pages_enabled(repo_full):
+    """
+    检查 GitHub 仓库是否已启用 Pages
+    返回: enabled / disabled / gh_not_installed / not_logged_in / repo_not_exists / error
+    """
+    if not repo_full or '/' not in repo_full:
+        return 'not_logged_in'
+    try:
+        result = subprocess.run(
+            ['gh', 'api', f'repos/{repo_full}/pages'],
+            capture_output=True, text=True, timeout=15
+        )
+        if result.returncode == 0:
+            return 'enabled'
+        if '404' in result.stderr or 'Not Found' in result.stderr:
+            return 'disabled'
+        if 'not found' in result.stderr.lower():
+            return 'repo_not_exists'
+        return 'error'
+    except FileNotFoundError:
+        return 'gh_not_installed'
+    except subprocess.TimeoutExpired:
+        return 'error'
+    except Exception:
+        return 'error'
+
+
 def build_dialogs_spec(mode):
     """阶段 A：构建弹窗规范 JSON（standalone 6 项 / proxy 7 项）"""
     dialogs = [
@@ -421,6 +469,36 @@ def build_final_status(config, mode, collected_meta):
         cf.get('account_id', '') not in ('', '<your-cloudflare-account-id>')
     )
 
+    # ★ 初始化校验：wrangler 授权状态（Cloudflare 部署前提）
+    wrangler_authorized = 'not_authorized'
+    if cloudflare_configured:
+        wrangler_authorized = check_wrangler_auth()
+
+    # ★ 初始化校验：GitHub Pages 启用状态（仅 github 部署启用时检查）
+    github_pages_enabled = 'skip'
+    if github_required and github_repo_full and '/' in github_repo_full:
+        if gh_status == 'logged_in' and github_repo_status == 'exists':
+            github_pages_enabled = check_github_pages_enabled(github_repo_full)
+        elif github_repo_status == 'not_exists':
+            github_pages_enabled = 'repo_not_exists'
+        else:
+            github_pages_enabled = 'pending'
+
+    # ★ 综合判定初始化是否通过
+    init_blockers = []
+    if not cloudflare_configured:
+        init_blockers.append({'target': 'cloudflare', 'reason': 'api_token 或 account_id 仍为占位符'})
+    elif wrangler_authorized != 'authorized':
+        init_blockers.append({'target': 'cloudflare', 'reason': f'wrangler 未授权（{wrangler_authorized}），请执行 npx wrangler login'})
+    if github_required:
+        if gh_status != 'logged_in':
+            init_blockers.append({'target': 'github', 'reason': 'gh CLI 未登录，请执行 gh auth login'})
+        elif github_repo_status != 'exists':
+            init_blockers.append({'target': 'github', 'reason': f'仓库 {github_repo_full} 不存在，请执行 gh repo create'})
+        elif github_pages_enabled not in ('enabled', 'skip'):
+            init_blockers.append({'target': 'github', 'reason': f'GitHub Pages 未启用（{github_pages_enabled}），请执行 gh api repos/{github_repo_full}/pages -X POST -f source[branch]=main -f source[path]=/'})
+    init_check_passed = len(init_blockers) == 0
+
     # 构建 next_actions
     next_actions = []
     for ph in placeholders:
@@ -458,6 +536,10 @@ def build_final_status(config, mode, collected_meta):
         'schedule_timezone': collected_meta.get('schedule_timezone', 'Asia/Shanghai'),
         'placeholders_remaining': placeholders,
         'cloudflare_configured': cloudflare_configured,
+        'wrangler_authorized': wrangler_authorized,
+        'github_pages_enabled': github_pages_enabled,
+        'init_check_passed': init_check_passed,
+        'init_blockers': init_blockers,
         'github_login_required': github_required,
         'github_login_status': gh_status,
         'github_repo_name': github_repo_name,

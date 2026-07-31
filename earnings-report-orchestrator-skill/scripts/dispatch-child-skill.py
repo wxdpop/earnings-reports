@@ -116,7 +116,7 @@ def find_agent_python():
             candidates.append(Path(base) / 'TRAE SOLO CN' / 'ModularData' / 'ai-agent' / 'vm' / 'tools' / 'python' / 'python.exe')
             candidates.append(Path(base) / 'TRAE' / 'ModularData' / 'ai-agent' / 'vm' / 'tools' / 'python' / 'python.exe')
     elif IS_MACOS:
-        home = os.path.expanduser('~')
+        home = os.environ.expanduser('~')
         candidates.append(Path(home) / 'Library' / 'Application Support' / 'TRAE SOLO CN' / 'ModularData' / 'ai-agent' / 'vm' / 'tools' / 'python' / 'bin' / 'python3')
         candidates.append(Path(home) / 'Library' / 'Application Support' / 'TRAE' / 'ModularData' / 'ai-agent' / 'vm' / 'tools' / 'python' / 'bin' / 'python3')
     else:
@@ -302,6 +302,23 @@ def build_dispatch_plan(args) -> dict:
     else:
         deploy_note = "wrangler pages deploy → Cloudflare Pages（必选，从 cf-pages-deploy 父目录部署，保持 /reports/ 路径前缀）；跳过 git push（deployment.targets 不含 github）"
 
+    # ★ 动态推导 Cloudflare Pages URL 和 GitHub Pages URL（避免硬编码域名）
+    # CF_PROJECT 从 deployment.github.repo 提取仓库名（取 / 后的部分）
+    cf_project = project_name  # project_name 已在上方从 github_repo.split('/')[-1] 提取
+    cf_pages_url = f"https://{cf_project}.pages.dev/reports/{ticker}/{filename}"
+    # GitHub Pages URL 从 deployment.github.repo 推导（用户名/仓库名）
+    if has_github and '/' in github_repo:
+        gh_user = github_repo.split('/')[0]
+        gh_repo_name = github_repo.split('/')[-1]
+        github_pages_url = f"https://{gh_user}.github.io/{gh_repo_name}/reports/{ticker}/{filename}"
+    else:
+        github_pages_url = ""
+    # GitHub 仓库 URL
+    if has_github and '/' in github_repo:
+        github_repo_url = f"https://github.com/{github_repo}"
+    else:
+        github_repo_url = ""
+
     plan = {
         "status": "ok",
         "platform": plat,
@@ -313,6 +330,9 @@ def build_dispatch_plan(args) -> dict:
         "quarter_slug": quarter_slug,
         "filename": filename,
         "report_path": report_path,
+        "cf_pages_url": cf_pages_url,
+        "github_pages_url": github_pages_url,
+        "github_repo_url": github_repo_url,
         "child_skill_dir": str(child_skill_dir),
         "init_marker": {
             "initialized_at": marker.get("initialized_at", ""),
@@ -392,7 +412,10 @@ def build_dispatch_plan(args) -> dict:
                         "name": "飞书推送",
                         "command": f'"{py_bin}" "{child_references / "send-feishu.py"}"',
                         "args": {
-                            "report-file": str(repo_dir / report_path)
+                            "report-file": str(repo_dir / report_path),
+                            "cf-pages-url": cf_pages_url,
+                            "report-url": github_pages_url,
+                            "repo-url": github_repo_url
                         }
                     }
                 ]

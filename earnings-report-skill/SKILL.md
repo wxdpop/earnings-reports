@@ -438,8 +438,8 @@ git push
 ```
 
 **返回 URL**：
-- Cloudflare（必选主链接）：`https://earnings-reports.pages.dev/reports/{TICKER}/{filename}.html`
-- GitHub（可选备用，仅当 deployment.targets 含 github 时返回）：`https://{github-user}.github.io/{repo-name}/reports/{TICKER}/{filename}.html`（从 `deployment.github.repo` 推导）
+- Cloudflare（必选主链接）：从 `dispatch-child-skill.py` 输出的 `cf_pages_url` 字段读取（格式 `https://{CF_PROJECT}.pages.dev/reports/{TICKER}/{filename}.html`，CF_PROJECT 从 `deployment.github.repo` 提取仓库名）
+- GitHub（可选备用，仅当 deployment.targets 含 github 时返回）：从 `dispatch-child-skill.py` 输出的 `github_pages_url` 字段读取（格式 `https://{github-user}.github.io/{repo-name}/reports/{TICKER}/{filename}.html`，从 `deployment.github.repo` 推导）
 
 **子代理 C — 阶段9 飞书推送**（统一为 Python 入口）：
 
@@ -448,9 +448,9 @@ git push
 # ★ --cf-pages-url 必选（Cloudflare 始终部署）；--report-url / --repo-url 可选（仅 deployment.targets 含 github 时传入）
 python "{skill_dir}/references/send-feishu.py" \
     --company-name "公司中文名" --quarter "2026 Q2" \
-    --cf-pages-url "https://earnings-reports.pages.dev/reports/{TICKER}/{filename}.html" \
-    --report-url "https://wxdpop.github.io/earnings-reports/reports/{TICKER}/{filename}.html" \
-    --repo-url "https://github.com/wxdpop/earnings-reports" \
+    --cf-pages-url "<从 dispatch-child-skill.py 输出的 cf_pages_url 字段读取>" \
+    --report-url "<从 dispatch-child-skill.py 输出的 github_pages_url 字段读取，仅 github 部署时非空>" \
+    --repo-url "<从 dispatch-child-skill.py 输出的 github_repo_url 字段读取，仅 github 部署时非空>" \
     --revenue "..." --revenue-yoy "+9.6%" \
     --net-income "..." --net-income-yoy "-45.3%" \
     --gross-margin "14.6%" --margin-delta "-8.0 pts" \

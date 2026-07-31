@@ -159,6 +159,38 @@ python "{child_skill_dir}/scripts/collect-user-info.py" --mode proxy --parent-co
 - `github_repo_name` / `github_repo_full` / `github_repo_status` / `github_repo_action` → 步骤 6.5.3（GitHub 仓库 clone/init/pull）
 - **详细规范（弹窗选项、字段映射、占位符检测、输出 JSON 消费映射）见子技能 [info-collect-spec.md](../earnings-report-skill/references/info-collect-spec.md)**
 
+#### 步骤 2.5：★ 初始化校验阻断点（信息收集完毕后强制校验）
+
+**目的**：信息收集完毕后，强制校验 Cloudflare 和 GitHub 是否已完成初始化。未初始化则阻断流程，避免后续阶段 8 部署失败。
+
+**校验流程**：
+
+读取步骤 2 阶段 B 输出 JSON 的以下字段：
+
+1. **Cloudflare 校验**（必选）：
+   - `cloudflare_configured=false` → 阻断，弹窗引导用户编辑 config.local.json 填入 API Token 和 Account ID
+   - `wrangler_authorized≠authorized` → 阻断，弹窗引导执行 `npx wrangler login`
+2. **GitHub 校验**（仅 `github_login_required=true` 时执行）：
+   - `github_login_status≠logged_in` → 阻断，弹窗引导执行 `gh auth login`
+   - `github_repo_status≠exists` → 阻断，弹窗引导执行 `gh repo create <repo> --public`
+   - `github_pages_enabled≠enabled` → 阻断，弹窗引导执行 `gh api repos/<repo>/pages -X POST -f source[branch]=main -f source[path]=/`
+3. **通过条件**：`init_check_passed=true`（即 `init_blockers` 为空）→ 继续步骤 3
+
+**阻断处理**：
+- `init_check_passed=false` 时，读取 `init_blockers` 数组，逐项弹窗引导用户完成初始化
+- 用户完成每项后，重新调用 `collect-user-info.py --mode proxy --parent-config ... --answers ...` 执行阶段 B，刷新校验状态
+- 全部阻断项解除后，自动进入步骤 3
+
+**校验字段说明**（由 `collect-user-info.py` 的 `build_final_status()` 输出）：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `cloudflare_configured` | bool | Cloudflare API Token 和 Account ID 是否已填入（非占位符） |
+| `wrangler_authorized` | str | wrangler 授权状态：authorized / not_authorized / wrangler_not_installed / error |
+| `github_pages_enabled` | str | GitHub Pages 启用状态：enabled / disabled / repo_not_exists / pending / skip |
+| `init_check_passed` | bool | 综合判定：所有阻断项均通过 |
+| `init_blockers` | array | 阻断项列表，每项含 `target`（cloudflare/github）和 `reason` |
+
 #### 步骤 3：★ Python 前提项检测 + LLM 自动安装（agent 优先检测）
 
 **检测原则**：先检测当前 agent 是否内置 Python（沙箱环境，requests 等常用库已预装），有就标记后续直接使用 agent 内置路径；agent 没有再检测系统级别；系统没有就直接安装并校验 PATH。

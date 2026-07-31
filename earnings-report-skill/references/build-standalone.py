@@ -125,6 +125,59 @@ def escape_script_close(js):
     return re.sub(r'(?i)</script\s*>', '<\\/script>', js)
 
 
+# echarts CDN 引用模板（与 report-template.md 保持一致）
+ECHARTS_CDN_TAGS = '''<script src="https://cdn.staticfile.org/echarts/5.5.0/echarts.min.js"></script>
+<script>window.echarts||document.write('<script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js"><\\/script>')</script>
+<script>window.echarts||document.write('<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"><\\/script>')</script>'''
+
+
+def detect_and_clean_inline_echarts(html):
+    """
+    检测并清理内联的 echarts.min.js（历史报告兼容）
+    返回: (cleaned_html, was_cleaned)
+    """
+    import re
+    was_cleaned = False
+
+    # 特征 1：检测 <script src="./_shared/js/echarts.min.js"></script> 本地引用（旧模板）
+    local_echarts_pattern = r'<script\s+src=["\']\./_shared/js/echarts\.min\.js["\']\s*></script>'
+    if re.search(local_echarts_pattern, html, re.IGNORECASE):
+        html = re.sub(local_echarts_pattern, '', html, flags=re.IGNORECASE)
+        was_cleaned = True
+        log("  检测到本地 echarts.min.js 引用，已移除", 'WARN')
+
+    # 特征 2：检测内联的 echarts 库代码（大段 minified JS 含 echarts 标识）
+    # echarts 库的特征字符串：包含 "zrender" 或 "echartsCharts" 或 "function(t,e,i)" 且长度 > 10000
+    inline_pattern = r'<script>(.*?)</script>'
+    for match in re.finditer(inline_pattern, html, re.DOTALL):
+        script_content = match.group(1)
+        # 检测 echarts 库特征
+        has_echarts_marker = (
+            ('zrender' in script_content and len(script_content) > 5000) or
+            ('echartsCharts' in script_content) or
+            ('echarts' in script_content and 'function(t,e,i)' in script_content and len(script_content) > 10000)
+        )
+        if has_echarts_marker:
+            # 移除内联的 echarts 脚本块
+            html = html.replace(match.group(0), '', 1)
+            was_cleaned = True
+            log(f"  检测到内联 echarts.min.js（{len(script_content)} 字符），已移除", 'WARN')
+            break  # 只处理第一个匹配
+
+    # 如果进行了清理，在 charts.js 引用之前插入 CDN 引用
+    if was_cleaned:
+        charts_ref = '<script src="assets/charts.js"></script>'
+        if charts_ref in html:
+            html = html.replace(charts_ref, ECHARTS_CDN_TAGS + '\n' + charts_ref)
+        else:
+            # 如果 charts.js 已被内联，插入到 </body> 之前
+            if '</body>' in html:
+                html = html.replace('</body>', ECHARTS_CDN_TAGS + '\n</body>')
+        log("  已插入 echarts CDN 引用（onerror 链式回退）", 'GRAY')
+
+    return html, was_cleaned
+
+
 # ============================================================
 # 主流程
 # ============================================================
@@ -190,6 +243,11 @@ def main():
     #    模板中已是 CDN 引用 + document.write 回退链，无需替换
     #    回退链：Staticfile → BootCDN → jsDelivr → 本地 ./_shared/js/echarts.min.js
     log("  echarts 走 CDN 引用（onerror 链式回退）", 'GRAY')
+
+    # 3.5 ★ 历史报告兼容：检测并清理内联的 echarts.min.js
+    html, echarts_cleaned = detect_and_clean_inline_echarts(html)
+    if echarts_cleaned:
+        log("  ★ 已清理内联 echarts.min.js，替换为 CDN 引用", 'WARN')
 
     # 4. 内联 charts.js（使用字符串精确匹配）
     charts_ref_tag = '<script src="assets/charts.js"></script>'
