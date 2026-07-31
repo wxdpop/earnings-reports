@@ -83,7 +83,7 @@ description: "自动生成上市公司最新财报深度分析HTML报告（含�
 3. **命令阻塞** — `blocking: true`（除 HTTP 服务器用 `blocking: false`）
 4. **文件操作用 Python pathlib / shutil** — `pathlib.Path` / `shutil.copy2` / `shutil.rmtree` 等，禁止 `os.system` 调用 `Copy-Item` / `cp` 等高风险命令
 5. **无头验证用 Chrome headless** — 跨平台路径自动检测，Chrome 不可用时退化为纯 HTML 结构验证
-6. **阶段7/8/9 并行执行** — 阶段6验证 PASS 后，单条消息并行启动 3 个子代理（Task 工具），等待全部返回
+6. **★ 阶段7/8/9 串行执行** — 阶段6验证 PASS 后，按 7→8→8.5→9 顺序串行执行。部署完成后必须执行阶段 8.5 部署验证，确保 URL 可达再推送飞书
 7. **★ 阶段1 数据拉取并行执行** — API 脚本（RunCommand）+ 多站点 WebFetch（N 个 Task 子代理）在单条消息中并行启动，等待全部返回后汇总
 8. **脱敏检查** — 提交前自查（详见"脱敏检查"规范）
 9. **执行完毕清理资源** — 关闭 HTTP 服务器、删除临时文件
@@ -346,15 +346,14 @@ Chrome 不可用时自动退化为纯 HTML 结构验证（不执行 JS，无法�
 
 脚本自动：启动临时 HTTP 服务器 → Chrome headless 截图 → HTML 结构验证 → 输出 PASS/FAIL → 关闭服务器。
 
-### 阶段 7-9：并行执行
+### 阶段 7-9：串行执行（7→8→8.5→9）
 
-**阶段6验证 PASS 后，主代理在单条消息中并行启动 3 个子代理（Task 工具，`subagent_type: general_purpose_task`），等待全部返回。**
+**阶段6验证 PASS 后，按 7→8→8.5→9 顺序串行执行。部署（阶段8）完成后必须执行阶段 8.5 部署地址可达性验证，验证通过才能进入阶段 9 飞书推送，避免向飞书推送不可达链接。**
 
-**并行可行性**：
-- 阶段7（清理）：清理 `data/{ticker}-{quarter}-earnings/` 临时目录，不影响 `reports/`
-- 阶段8（部署）：只依赖 `reports/{TICKER}/` 最终文件
-- 阶段9（飞书推送）：只依赖 `reports/{TICKER}/` 最终文件
-- 三者互不依赖，可完全并行
+**★ 串行执行原因**：
+- 阶段 8.5（部署验证）依赖阶段 8（部署）完成
+- 阶段 9（飞书推送）依赖阶段 8.5 验证通过（避免推送不可达链接）
+- 阶段 7（清理）虽与 8 无强依赖，但为简化编排统一串行
 
 **子代理 A — 阶段7 资源清理**：
 1. 关闭 HTTP 服务器（StopCommand 关闭对应 command_id）
@@ -441,6 +440,76 @@ git push
 - Cloudflare（必选主链接）：从 `dispatch-child-skill.py` 输出的 `cf_pages_url` 字段读取（格式 `https://{CF_PROJECT}.pages.dev/reports/{TICKER}/{filename}.html`，CF_PROJECT 从 `deployment.github.repo` 提取仓库名）
 - GitHub（可选备用，仅当 deployment.targets 含 github 时返回）：从 `dispatch-child-skill.py` 输出的 `github_pages_url` 字段读取（格式 `https://{github-user}.github.io/{repo-name}/reports/{TICKER}/{filename}.html`，从 `deployment.github.repo` 推导）
 
+### 阶段 8.5：部署地址可达性验证（★ 新增子流程，串行在阶段 8 之后、阶段 9 之前）
+
+**触发时机**：阶段 8 部署完成（`wrangler pages deploy` 成功 + 可选 `git push` 成功）后，立即执行。
+
+**核心目标**：验证部署后的 URL 是否可达，避免向飞书推送不可达链接。**不可达时自动诊断原因并触发重新部署，最多重试 3 次，3 次后仍失败则输出失败原因并直接终止任务**（不再继续阶段 9 飞书推送）。
+
+**执行脚本**（跨平台 Python 3，与 verify-headless.py 同级）：
+
+```bash
+# python 须替换为 config.local.json 的 python_executable 绝对路径
+python "{skill_dir}/references/verify-deployment.py" \
+    --cf-pages-url "<从 dispatch-child-skill.py 输出的 cf_pages_url 字段读取>" \
+    --github-pages-url "<从 dispatch-child-skill.py 输出的 github_pages_url 字段读取，仅 github 部署时传入，否则省略>" \
+    --ticker "{TICKER}" --quarter "{quarter}"
+```
+
+**脚本行为**：
+1. 对每个 URL 执行 HTTP GET（User-Agent 伪装 + 30s 超时）
+2. 判定通过条件：HTTP 200 且响应内容包含 `<html` / `<!doctype html` / `<head` / `<body` 之一
+3. 失败时按错误类型自动诊断（DNS / 超时 / 404 / 5xx / SSL / 内容空 / 连接拒绝）
+4. 内置 3 次重试，间隔递增（5s → 15s → 30s），适配 Cloudflare Pages 部署延迟
+5. 输出 JSON：`{status, all_passed, verified_urls:[{url, label, passed, attempts, last_http_code, diagnosis}], failed_count}`
+6. 退出码：0=全部通过（可进入阶段 9），1=有失败（任务终止）
+
+**★ 失败处理流程（LLM 编排）**：
+
+```
+verify-deployment.py 退出码 = 0
+  → 全部 URL 验证通过，进入阶段 9 飞书推送
+
+verify-deployment.py 退出码 = 1（3 次重试后仍失败）
+  → 读取输出 JSON 的 verified_urls[].diagnosis 字段
+  → 按 diagnosis.category 分类处理：
+    - dns / timeout / connection / ssl → 网络类问题
+        → 等待 30s 后重新执行 wrangler pages deploy（重新部署）
+        → 重新部署后再次调用 verify-deployment.py 验证
+        → 最多循环 3 次（部署→验证），3 次后仍失败则终止任务并弹窗提示
+    - not_found（404）→ 路径错误
+        → 检查本地 reports/{TICKER}/{filename}.html 文件是否存在
+        → 文件存在 → 重新执行 wrangler pages deploy（确认从 cf-pages-deploy 父目录部署）
+        → 文件不存在 → 回退到阶段 5 重新构建单文件 HTML
+        → 重新构建+部署后再次验证，最多 3 次
+    - server_error（5xx）→ 服务端问题
+        → 等待 60s 后重新验证（服务自愈）
+        → 仍失败 → 重新执行 wrangler pages deploy
+        → 最多 3 次
+    - forbidden（403）→ 权限问题
+        → GitHub 仓库需为 public，检查 GitHub Pages 设置
+        → 修复后重新验证
+    - empty_content → 部署文件损坏
+        → 回退到阶段 5 重新构建 + 阶段 8 重新部署
+        → 最多 3 次
+  → 3 次循环后仍失败：输出完整失败原因（diagnosis.reason + diagnosis.suggestion），
+    直接终止任务（跳过阶段 9 飞书推送），由 LLM 弹窗提示用户介入
+```
+
+**★ 终止规则**：
+- verify-deployment.py 自身 3 次重试后退出码 1 → 触发 LLM 编排的失败处理
+- LLM 编排的失败处理（重新部署 + 重新验证）最多 3 轮
+- 3 轮后仍失败 → **直接终止任务**，不进入阶段 9，更新公司库状态为 failed，弹窗提示用户
+
+**验证项**（每个 URL 独立判定）：
+
+| URL | 必选/可选 | 验证标准 | 失败处理 |
+|-----|-----------|----------|----------|
+| Cloudflare Pages URL | 必选 | HTTP 200 + 响应含 HTML 标签 | 重新 wrangler deploy |
+| GitHub Pages URL | 可选（仅 github 部署时） | HTTP 200 + 响应含 HTML 标签 | 等待 1-2min Pages 生效，或重新 git push |
+
+**与阶段 9 的关系**：阶段 8.5 验证全部通过（退出码 0）才能进入阶段 9 飞书推送。任一 URL 验证失败且 3 轮重试后仍失败 → 跳过阶段 9，直接终止任务。
+
 **子代理 C — 阶段9 飞书推送**（统一为 Python 入口）：
 
 ```bash
@@ -493,6 +562,7 @@ Webhook URL 从 config.local.json 的 `feishu.webhook_url`（嵌套结构）加�
 | 模板填充 | `scripts/fill-template.py` | `--template-file` / `--sections-file` / `--output-file` | 含结构完整性校验 |
 | 单文件构建 | `references/build-standalone.py` | `--source-dir` / `--output-dir` | 使用 Python 字符串 .replace() 精确匹配 |
 | 无头验证 | `references/verify-headless.py` | `<report.html>` | 内置 Chrome 三平台路径检测 |
+| ★ 部署地址验证 | `references/verify-deployment.py` | `--cf-pages-url` / `--github-pages-url` / `--ticker` / `--quarter` | 阶段 8.5，3 次重试 + 失败诊断 |
 | 飞书推送 | `references/send-feishu.py` | `--company-name` / `--quarter` 等 17 个参数 | Webhook URL 从 config 加载 |
 | 数据解析 | `scripts/parse-financial-data.py` | 自动调用，无需手动执行 | ★ 跨平台，fetch-data 完成后自动调用 |
 
@@ -519,6 +589,7 @@ Webhook URL 从 config.local.json 的 `feishu.webhook_url`（嵌套结构）加�
 | `references/charts-template.js` | ECharts 图表模板（7 个固定图表） |
 | `references/build-standalone.py` | 单文件构建脚本（Python 字符串 .replace() 精确匹配） |
 | `references/verify-headless.py` | 无头浏览器验证脚本（跨平台 Python 3，内置 Chrome 三平台路径检测） |
+| `references/verify-deployment.py` | ★ 部署地址可达性验证脚本（阶段 8.5，3 次重试 + 失败诊断，跨平台 Python 3） |
 | `references/send-feishu.py` | 飞书群推送脚本（跨平台 Python 3） |
 | `references/info-collect-spec.md` | 信息收集规范文档（collect-user-info.py 的静态参考镜像） |
 | `templates/sections-reference.md` | 各 section 必需子元素规范（结构校验依据） |
@@ -544,6 +615,7 @@ earnings-report-skill/
 │   ├── charts-template.js            # 图表模板
 │   ├── build-standalone.py           # 单文件构建（跨平台 Python 3）
 │   ├── verify-headless.py            # 无头验证（跨平台 Python 3）
+│   ├── verify-deployment.py          # ★ 部署地址可达性验证（阶段 8.5，跨平台 Python 3）
 │   ├── send-feishu.py                # 飞书推送（跨平台 Python 3）
 │   └── info-collect-spec.md          # 信息收集规范文档
 ├── scripts/                          # 核心脚本（统一 Python 单文件入口）

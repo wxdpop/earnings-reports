@@ -8,7 +8,7 @@
   - 校验子技能目录存在
   - 统一用 python 命令调用子技能脚本（子技能已统一 Python 单文件，无平台分支）
   - 解析 Python 绝对路径（agent 内置 > 系统 > sys.executable），避免 Windows Store stub 拦截
-  - 输出子技能脚本调用序列（LLM 按此序列执行子技能 9 阶段工作流）
+  - 输出子技能脚本调用序列（LLM 按此序列执行子技能 10 阶段工作流，含阶段 8.5 部署验证）
 
 设计原则：
   - 脚本仅做参数封装和路径校验，不实际执行子技能脚本
@@ -394,8 +394,9 @@ def build_dispatch_plan(args) -> dict:
             },
             {
                 "stage": "7-9",
-                "name": "并行执行（★ Trae 用 Task 子代理）",
-                "parallel": True,
+                "name": "串行执行（7→8→8.5→9，部署验证通过才能推送飞书）",
+                "parallel": False,
+                "sequential": True,
                 "sub_tasks": [
                     {
                         "sub_stage": 7,
@@ -408,15 +409,30 @@ def build_dispatch_plan(args) -> dict:
                         "note": deploy_note
                     },
                     {
+                        "sub_stage": "8.5",
+                        "name": "★ 部署地址可达性验证（阶段 8.5，3 次重试 + 失败诊断）",
+                        "command": f'"{py_bin}" "{child_references / "verify-deployment.py"}"',
+                        "args": {
+                            "cf-pages-url": cf_pages_url,
+                            "github-pages-url": github_pages_url,
+                            "ticker": ticker,
+                            "quarter": quarter
+                        },
+                        "critical": True,
+                        "note": "验证 Cloudflare Pages URL（必选）+ GitHub Pages URL（可选）是否可达。3 次重试后仍失败则终止任务，跳过阶段 9 飞书推送。失败时 LLM 按 diagnosis.category 自动诊断并触发重新部署，最多 3 轮（部署→验证），3 轮后仍失败则直接终止任务。",
+                        "skip_condition": "仅当阶段 8 部署成功才执行；阶段 8 失败则跳过 8.5 直接执行 rollback"
+                    },
+                    {
                         "sub_stage": 9,
-                        "name": "飞书推送",
+                        "name": "飞书推送（阶段 8.5 验证通过后执行）",
                         "command": f'"{py_bin}" "{child_references / "send-feishu.py"}"',
                         "args": {
                             "report-file": str(repo_dir / report_path),
                             "cf-pages-url": cf_pages_url,
                             "report-url": github_pages_url,
                             "repo-url": github_repo_url
-                        }
+                        },
+                        "skip_condition": "仅当阶段 8.5 验证通过（退出码 0）才执行；8.5 失败则跳过飞书推送"
                     }
                 ]
             },
@@ -451,7 +467,8 @@ def main():
   校验父技能初始化标记 + 子技能目录，输出子技能脚本调用序列。
   统一用 python 命令调用子技能脚本（子技能已统一 Python 单文件，无平台分支）。
   解析 Python 绝对路径（agent 内置 > 配置缓存 > sys.executable > 系统 PATH），避免 Windows Store stub 拦截。
-  LLM 按序列执行子技能 9 阶段工作流（fetch-data → fill-template → build-standalone → verify-headless → 部署 → 飞书推送）。
+  LLM 按序列执行子技能工作流：fetch-data → fill-template → build-standalone → verify-headless → 资源清理 → 部署 → ★部署验证(8.5) → 飞书推送。
+  阶段 8.5 验证部署 URL 可达性，3 次重试后仍失败则终止任务（跳过飞书推送）。
 
 示例:
   python dispatch-child-skill.py --ticker NVDA --quarter "Q2 FY2026"

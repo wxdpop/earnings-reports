@@ -69,6 +69,12 @@ description: "财报编排调度技能。1句话触发初始化：先收集调�
 6. 执行完毕清理资源（删除临时脚本、关闭 HTTP 服务器）
 7. Trae 专有能力（Schedule、AskUserQuestion、Task 子代理、WebFetch）以 ★ 标注，其他 agent 可降级为系统 cron / 命令行 stdin / 串行执行 / Python requests
 8. **Python 调用全局规则**：本文档中所有 `python "{...}"` 命令模板中的 `python` 占位符，LLM 实际执行时**必须替换为** `config.local.json` 的 `python_executable` 字段绝对路径（初始化阶段 3 探测并缓存，优先 agent 内置 Python）。原因：Windows Store「应用执行别名」0 字节 stub 会拦截 `python` 命令导致退出码 9009。示例：`python "{parent_skill_dir}\scripts\library-manager.py" --action today` 实际执行为 `"<python_executable>" "{parent_skill_dir}\scripts\library-manager.py" --action today`
+9. ★ **多家公司串行处理规则**（硬性约束）：如当日命中多家公司财报发布，**就绪检查（readiness-check.py）可并行执行**以加速判定，但 **dispatch-child-skill.py 触发子技能完整 10 阶段工作流必须一家一家串行处理**（前一家完成 stage 10 update-status 后才能开始下一家的 stage 1）。**严禁并行调用多家公司的 dispatch-child-skill.py**，原因：
+   - Cloudflare Pages 部署冲突：多家公司同时 `wrangler pages deploy` 会互相覆盖 `cf-pages-deploy/` 临时目录
+   - git push 冲突：多家公司同时 `git push` 会触发远程拒绝（non-fast-forward）
+   - 资源争用：`fetch-data.py` 并发拉取 API 可能触发限流；`build-standalone.py` 并发构建可能内存溢出
+   - 日志混乱：多家公司并行输出的日志难以区分归属
+   串行执行顺序：按 `company-library.json` 中 `companies` 数组顺序处理；任一家失败不影响后续公司（失败公司标记 `status=failed`，继续下一家）
 
 ## 工作流程
 
@@ -504,7 +510,9 @@ message: |
        → 仅输出："XX公司当日有财报更新计划，正式财报还没有发布，等待下一次调度执行"
        → 保持 status="waiting"，不调用子技能，等下一次调度
      - 三项全部 PASS（财报已正式发布完成）
-       → 调用 dispatch-child-skill.py 触发子技能生成报告
+       → ★ 多家公司串行处理（硬性约束）：如当日多家 ready，按 company-library.json 顺序串行调用 dispatch-child-skill.py
+       → 严禁并行调用多家公司 dispatch（避免 Cloudflare/git 冲突），前一家 stage 10 完成后才能开始下一家 stage 1
+       → 任一家失败不影响后续公司（失败公司 status=failed，继续下一家）
   
   6. 生成完成后调用 library-manager.py update-status 改为 "completed"
    ★ status=completed 时自动拉取 Finnhub API 更新下一次财报日期：
@@ -722,7 +730,7 @@ python "{parent_skill_dir}\scripts\library-manager.py" --action today
    就绪检查三项：
    ① 财报是否已发布（公司 IR 页面有最新季度财报链接）
    ② 电话会议是否已结束（IR 页面有 replay/audio 链接，或媒体报道"电话会议结束"）
-   ③ 格隆汇/富途是否已发布财报分析文章（WebFetch 搜索关键词）
+   ③ 格隆汇/富途是否已发布财报分析文章（WebSearch 搜索引擎搜索关键词）
    ★ has_earnings_call=False 的公司跳过检查项 2，只查 1+3
   ↓
 5. 根据就绪检查结果分流：
@@ -732,7 +740,11 @@ python "{parent_skill_dir}\scripts\library-manager.py" --action today
    │   → 不弹窗、不输出详细检查日志
    │
    └─ 三项全部 PASS（财报已正式发布完成）
-       → 调用 dispatch-child-skill.py 触发子技能生成报告
+       → ★ 多家公司串行处理（硬性约束，详见自动化硬性约束第 9 条）：
+         如当日有多家公司 ready，按 company-library.json 中 companies 数组顺序
+         串行调用 dispatch-child-skill.py（前一家完成 stage 10 update-status 后才能开始下一家 stage 1）
+       → 严禁并行调用多家公司的 dispatch-child-skill.py（避免 Cloudflare 部署冲突、git push 冲突、资源争用）
+       → 任一家失败不影响后续公司（失败公司标记 status=failed，继续下一家）
   ↓
 6. 生成完成后调用 library-manager.py update-status 改为 "completed"
    ★ status=completed 时自动拉取 Finnhub API 更新下一次财报日期：
@@ -797,15 +809,22 @@ python "{parent_skill_dir}\scripts\readiness-check.py" --ticker "NVDA" --quarter
 | --------- | ---------------------------------------------------------- | ---------------- |
 | ① 财报已发布   | IR 页面存在当前季度的 PDF/news 链接，且发布时间 ≥ 财报预定时间                    | WebFetch 公司 IR   |
 | ② 电话会议已结束 | IR 页面有 audio replay / webcast replay 链接；或媒体报道"电话会议结束/会议要点" | WebFetch IR + 媒体 |
-| ③ 媒体已更新   | 格隆汇**或**富途**至少一家**有标题包含 ticker+财报/业绩/Q{N} 的文章，且发布日期 = 当天   | WebFetch 格隆汇/富途  |
+| ③ 媒体已更新   | 格隆汇**或**富途**至少一家**有标题包含 ticker+财报/业绩/Q{N} 的文章，且发布日期 = 当天   | WebSearch 搜索引擎  |
 
 **保守策略**：三项全部 PASS 才触发子技能。任一未通过 → 等下一次调度。
 
-**注意**：readiness-check.py 的 WebFetch 检查部分由 LLM 执行（脚本输出待检查 URL 列表 + 判定规则，LLM 用 WebFetch 完成实际抓取并回填结果），避免脚本直接抓取被反爬，LLM 可智能解析页面结构变化。
+**注意**：readiness-check.py 的任务执行部分由 LLM 完成（脚本输出待检查 URL 列表 + 搜索查询词 + 判定规则，LLM 用 WebFetch 抓取网页、用 WebSearch 搜索引擎查询，按规则判定并回填结果），避免脚本直接抓取被反爬，LLM 可智能解析页面结构变化。
 
 ### 阶段 3：调用子技能生成报告（dispatch-child-skill.py）
 
 **前置条件**：阶段 2 三项全 PASS，或用户手动触发跳过就绪检查。
+
+**★ 多家公司串行处理规则**（硬性约束，详见自动化硬性约束第 9 条）：
+- 如当日有多家公司 ready，**必须按 `company-library.json` 中 `companies` 数组顺序串行处理**
+- 前一家公司完成 stage 10（update-status completed）后，才能开始下一家公司的 stage 1（fetch-data）
+- **严禁并行调用多家公司的 dispatch-child-skill.py**（避免 Cloudflare Pages 部署冲突、git push 冲突、资源争用）
+- 任一家失败不影响后续公司：失败公司执行 `rollback_on_failure`（status=failed），继续下一家
+- 串行执行顺序示例：NVDA（stage 1→10 完成）→ AAPL（stage 1→10 完成）→ MSFT（stage 1→10 完成）
 
 ```bash
 # python 须替换为 config.local.json 的 python_executable 绝对路径（见自动化硬性约束第 8 条）
